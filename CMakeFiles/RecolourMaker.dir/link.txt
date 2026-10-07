@@ -1,0 +1,1 @@
+/usr/bin/cc CMakeFiles/RecolourMaker.dir/RecolourMaker.c.o -o RecolourMaker  -lraylib -lGL -lm -lpthread -ldl -lX11 
