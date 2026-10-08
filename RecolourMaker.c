@@ -1,7 +1,8 @@
 // TODO list:
-// add buttons to select actions
-// add windows for each part of the program
-// reorganise code
+// add model names to models
+// add buttons that open / close the function windows
+// add a way to figure out what it will take to recolour a part
+// bug: fix checking if a config file is for a part, eg: ../../GameData/TantaresLV/parts/BLOK_E/_AndromedaUS_VernierEngine_1.cfg
 // when parsing modules, more checks for being commented out
 
 // DONE list:
@@ -14,6 +15,11 @@
 // display modelData.txt
 // bug: fix converting from config file to model data file
 // find the materials of every model a part uses
+// reorganise code
+// add windows for each part of the program
+// add horizontal scrolling to function windows
+// add scrollbar to function windows
+// add horizontal scroll bars
 
 #define CLAY_IMPLEMENTATION
 #include "clay.h"
@@ -31,8 +37,12 @@
 #define int int32_t
 
 const int nullTerminator = 1;
+const float floatImprecisionBuffer = 0.001f;
+
+// global ui settings
 const int padding = 5;
-const int fontSize = 20;
+const int cornerRadius = 5;
+const int fontSize = 15;
 const Clay_Color textColour = (Clay_Color){ .r = 0, .b = 0, .g = 0, .a = 255};
 
 //▀█▀ █▄█ █▀█ █▀▀ █▀
@@ -96,11 +106,12 @@ typedef struct ModelMaterial
 }
 ModelMaterial;
 
-// for the purposes of this program a model (.mu) is considered its materials and nothing else
+// a model (.mu) used by parts
 typedef struct MuModel
 {
 	ModelMaterial * materials;
 	int length;
+	String name;
 }
 MuModel;
 
@@ -121,10 +132,25 @@ typedef struct PartInformation
 	StringArray modelDataPaths;		// file paths to the parts models modelData.txt
 	StringArray modelDataContents;	// raw modelData.txt contents
 	ModelArray models;				// parsed modelData.txt's
-	bool loaded;
 }
 PartInformation;
 
+typedef struct UiStatus
+{
+	bool fileBrowserOpen;
+	bool moduleTreeOpen;
+	bool onlyImportantModules;
+	bool modelListOpen;
+	bool onlyImportantMaterials;
+}
+UiStatus;
+
+typedef struct TextureArray
+{
+	Texture * textures;
+	int length;
+}
+TextureArray;
 
 //█▀▄▀█ █ █▀ █▀▀
 //█░▀░█ █ ▄█ █▄▄
@@ -132,7 +158,7 @@ PartInformation;
 // required by clay
 void HandleClayErrors(Clay_ErrorData errorData)
 {
-    printf("%s", errorData.errorText.chars);
+	printf("%s", errorData.errorText.chars);
 }
 
 // returns the minimum of two ints
@@ -146,6 +172,24 @@ int MinInt(int a, int b)
 }
 
 int MaxInt(int a, int b)
+{
+	if (a > b)
+	{
+		return a;
+	}
+	return b;
+}
+
+float MinFloat(float a, float b)
+{
+	if (a < b)
+	{
+		return a;
+	}
+	return b;
+}
+
+float MaxFloat(float a, float b)
 {
 	if (a > b)
 	{
@@ -339,22 +383,6 @@ bool HasNullTerminator(String string)
 	return false;
 }
 
-// adds a charchter to the end of a string
-String AddCharToEndOfString(String string, char newChar)
-{
-//	printf("old string: ");
-//	BetterPrint(string);
-
-	string.length += 1;
-	string.chars = realloc(string.chars, sizeof(char) * string.length);
-	string.chars[string.length - 1] = newChar;
-	
-//	printf("new string: ");
-//	BetterPrint(string);
-	
-	return string;
-}
-
 // resizes a string
 void ResizeString(String * string, int length)
 {
@@ -384,6 +412,19 @@ void ResizeString(String * string, int length)
 	}
 }
 
+// adds a charchter to the end of a string
+void AddCharToEndOfString(String * string, char newChar)
+{
+//	printf("old string: ");
+//	BetterPrint(string);
+	
+	ResizeString(string, string->length + 1);
+	string->chars[string->length - 1] = newChar;
+	
+//	printf("new string: ");
+//	BetterPrint(string);
+}
+
 // garuntees a string has a null terminator
 void GarunteeNullTerminator(String * string)
 {
@@ -396,7 +437,7 @@ void GarunteeNullTerminator(String * string)
 	//printf("adding null terminator\n");
 	
 	// add the null terminator if it has none
-	*string = AddCharToEndOfString(*string, '\0');
+	AddCharToEndOfString(string, '\0');
 	
 	return;
 }
@@ -464,16 +505,6 @@ void TrimWhitespace(String * string)
 // check if two strings are equal
 bool StringsEqual(String a, String b)
 {
-	if (a.chars == NULL)
-	{
-		printf("string a has NULL chars\n");
-		return false;
-	}
-	if (b.chars == NULL)
-	{
-		printf("string b has NULL chars\n");
-		return false;
-	}
 	if (a.length != b.length)
 	{
 		return false;
@@ -626,6 +657,37 @@ int IndexOfSubstring(String string, int startIndex, String subString)
 	return -1;
 }
 
+// returns a string that is no more than length long
+String ClampStringLength(String string, int maxLength)
+{
+	if (string.length < maxLength)
+	{
+		return string;
+	}
+	
+	if (maxLength == -1)
+	{
+		return string;
+	}
+	
+	// copy the string and shorten it
+	String shortened = { 0 };
+	ResizeString(&shortened, string.length);
+	memcpy(shortened.chars, string.chars, sizeof(char) * string.length);
+	ResizeString(&shortened, maxLength - 3);
+	
+	// add ... the end of the string
+	AddCharToEndOfString(&shortened, '.');
+	AddCharToEndOfString(&shortened, '.');
+	AddCharToEndOfString(&shortened, '.');
+	GarunteeNullTerminator(&shortened);
+	
+//	printf("clamped string: ");
+//	BetterPrint(shortened);
+	
+	return shortened;
+}
+
 // returns the index of a key in a key value array
 int IndexOfKey(KeyValueArray array, String key)
 {
@@ -658,18 +720,57 @@ String ValueOfKey(KeyValueArray array, String key)
 //█▀▀ █ █░░ █▀▀   █░█ ▄▀█ █▄░█ █▀▄ █░░ █ █▄░█ █▀▀
 //█▀░ █ █▄▄ ██▄   █▀█ █▀█ █░▀█ █▄▀ █▄▄ █ █░▀█ █▄█
 
-// resets current directory to the KSP install folder
-void ResetCurrentDirectory(String * directory)
+// loads all of the images in the Sprites directory into an array of textures
+void LoadSprites(TextureArray * textures)
 {
-	// should start at the folder called "Kerbal Space Program"
+	String spritesLocation = (String){ .chars = "Sprites/", .length = 9 };
+	DIR * spriteDirectory = opendir(spritesLocation.chars);
 	
-	int initialDirectorylength = 7; 			// string plus null byte
-	const char * initialDirectory = "../../";	
+	if (spriteDirectory == NULL)
+	{
+		int err = errno;
+		printf("ERROR: Could not open: %s because: %s\n", spritesLocation.chars, strerror(err));
+		return;
+	}
 	
-	*directory = (String){ .length = initialDirectorylength, .chars = realloc(directory->chars, sizeof(char) * initialDirectorylength)};
-	memcpy(directory->chars, initialDirectory, sizeof(char) * initialDirectorylength);
+	// read all of the entries in the directory and load all as .png files as textures
+	struct dirent * entry = readdir(spriteDirectory);
 	
-	return;
+	while (entry != NULL)
+	{
+		int entryNameLength = strlen(entry->d_name);
+		//printf("entry name length: %d\n", entryNameLength);
+		//printf("entry name: %s\n", entry->d_name);
+		
+		// check if the entry name ends in .png
+		if (entryNameLength > 4 && entry->d_name[entryNameLength - 1] == 'g' && entry->d_name[entryNameLength - 2] == 'n' && entry->d_name[entryNameLength - 3] == 'p' && entry->d_name[entryNameLength - 4] == '.')
+		{
+			// build the path to the texture from the game executable
+			// start with Sprites/
+			String texturePath = (String){ .chars = NULL, .length = 0 };
+			ResizeString(&texturePath, spritesLocation.length);
+			memcpy(texturePath.chars, spritesLocation.chars, sizeof(char) * spritesLocation.length);
+			// add the name of the .png file
+			ResizeString(&texturePath, texturePath.length + entryNameLength);
+			memcpy(&texturePath.chars[spritesLocation.length - 1], entry->d_name, sizeof(char) * entryNameLength);
+			
+			// load the .png as a texture
+			Texture newTexture =  LoadTexture(texturePath.chars);
+			
+			// add the new texture to the array
+			textures->length += 1;
+			textures->textures = realloc(textures->textures, textures->length * sizeof(Texture));
+			textures->textures[textures->length - 1] = newTexture;
+			
+			free(texturePath.chars);
+			
+			//printf("loaded texture: '%s' \n", textureName.chars);
+		}
+		// read the next entry in the directory
+		entry = readdir(spriteDirectory);
+	}
+	
+	closedir(spriteDirectory);
 }
 
 // reads a whole file as a string
@@ -1138,7 +1239,6 @@ void BlankPart(PartInformation * part)
 	part->configFileContents.length = 0;
 	part->configFileContents.chars = realloc(part->configFileContents.chars, 0);
 	BlankModule(&part->modules);
-	part->loaded = false;
 }
 
 // loads a .cfg file into part information if it is a config file for a part
@@ -1176,7 +1276,6 @@ bool LoadConfigFile(PartInformation * part, String configFilePath)
 	
 	// parse the config string into a tree of modules
 	ParseModules(part->configFileContents, modulesStartIndex, &part->modules);
-	part->loaded = true;
 	
 	return true;
 }
@@ -1270,8 +1369,8 @@ String FindMeshName(String modelData, int meshStartIndex)
 	memcpy(meshName.chars, &modelData.chars[meshNameStart], sizeof(char) * meshNameLength);
 	TrimWhitespace(&meshName);
 	
-	//printf("mesh name: ");
-	//BetterPrint(meshName);
+	printf("mesh name: ");
+	BetterPrint(meshName);
 	
 	return meshName;
 }
@@ -1297,6 +1396,30 @@ int HasMaterialWithName(MuModel model, String materialName)
 	return -1;
 }
 
+// removes UnityEngine.Texture2D from the end of a string
+void TrimUnityEngineTexture2D(String * string)
+{
+	// check if the string ends in " (UnityEngine.Texture2D)"
+	String unityEngineTexture2D = (String){ .chars = " (UnityEngine.Texture2D)", .length = 25 };
+	
+	int endIndex = string->length - 1;
+	int startIndex = endIndex - unityEngineTexture2D.length + 1;
+	
+	String stringEnd = ExtractString(*string, startIndex, endIndex);
+	
+//	printf("string ends in: ");
+//	BetterPrint(stringEnd);
+//	BetterPrint(unityEngineTexture2D);
+	
+	if (StringsEqual(stringEnd, unityEngineTexture2D) == true)
+	{
+		ResizeString(string, string->length - unityEngineTexture2D.length);
+		GarunteeNullTerminator(string);
+//		printf("string trimmed to: ");
+//		BetterPrint(*string);
+	}
+}
+
 // returns the property and its value of a line in a modelData file
 KeyValue ParseMeshProperty(String propertyLine)
 {
@@ -1320,6 +1443,7 @@ KeyValue ParseMeshProperty(String propertyLine)
 	String value = { .length = valueLength, .chars = malloc(sizeof(char) * valueLength) };
 	memcpy(value.chars, &propertyLine.chars[colonIndex + 1], value.length);
 	TrimWhitespace(&value);
+	TrimUnityEngineTexture2D(&value);
 	
 	// package into key value pair
 	KeyValue propertyValue = (KeyValue){ .key = property, .value = value };
@@ -1332,14 +1456,14 @@ KeyValue ParseMeshProperty(String propertyLine)
 //++++++++++++++++++
 //Material #: 0
 //   Material Name: futurecsm_fueltank
-//       Shader Name               : KSP/Bumped Specular
-//       RenderQueue               : 2000
-//       _MainTex                  : NearFutureSpacecraft/Parts/FuelTank/service-tank/servicetank-25 (UnityEngine.Texture2D)
-//       _MainTexOffset            : (0.0, 0.0)
-//       _BumpMap                  : NearFutureSpacecraft/Parts/FuelTank/service-tank/servicetank-25-n (UnityEngine.Texture2D)
-//       _BumpMapOffset            : (0.0, 0.0)
-//       _Shininess                : 0.3
-//       _Color                    : (1.0, 1.0, 1.0, 1.0)
+//	   Shader Name			   : KSP/Bumped Specular
+//	   RenderQueue			   : 2000
+//	   _MainTex				  : NearFutureSpacecraft/Parts/FuelTank/service-tank/servicetank-25 (UnityEngine.Texture2D)
+//	   _MainTexOffset			: (0.0, 0.0)
+//	   _BumpMap				  : NearFutureSpacecraft/Parts/FuelTank/service-tank/servicetank-25-n (UnityEngine.Texture2D)
+//	   _BumpMapOffset			: (0.0, 0.0)
+//	   _Shininess				: 0.3
+//	   _Color					: (1.0, 1.0, 1.0, 1.0)
 //
 //++++++++++++++++++
 //-------------------------------------------
@@ -1519,8 +1643,35 @@ void ParseModelData(MuModel * model, String modelData)
 	free(plusRow.chars);
 }
 
+// finds the name of a model from its file path
+void ModelNameFromModelPath(String modelPath, String * modelName)
+{
+//	printf("model path: ");
+//	BetterPrint(modelPath);
+	
+	// .......V.....  	7
+	// cheese/name\0  	12
+	// name\0			5
+	
+	// the name starts after the last /
+	int nameIndex = LastIndexOfChar(modelPath, modelPath.length - 1, '/') + 1;
+	int nameLength = modelPath.length - nameIndex;
+	// copy the stuff after the slash to the model name
+	ResizeString(modelName, nameLength);
+	memcpy(modelName->chars, &modelPath.chars[nameIndex], sizeof(char) * nameLength);
+	// add .mu to the end of the name
+	ResizeString(modelName, modelName->length + 3);
+	modelName->chars[modelName->length - 4] = '.';
+	modelName->chars[modelName->length - 3] = 'm';
+	modelName->chars[modelName->length - 2] = 'u';
+	modelName->chars[modelName->length - 1] = '\0';
+	
+//	printf("model name: ");
+//	BetterPrint(*modelName);
+}
+
 // parse an array of model data files
-void ParseModelDatas(ModelArray * models, StringArray modelDatas)
+void ParseModelDatas(ModelArray * models, StringArray modelDatas, StringArray modelPaths)
 {
 	// clear out the models
 	*models = (ModelArray){ .models = NULL, .length = 0 };
@@ -1533,8 +1684,11 @@ void ParseModelDatas(ModelArray * models, StringArray modelDatas)
 		models->length += 1;
 		models->models = realloc(models->models, sizeof(Model) * models->length);
 		MuModel * model = &models->models[models->length - 1];
-		*model = (MuModel){ .materials = NULL, .length = 0 };
+		*model = (MuModel){ .materials = NULL, .length = 0, .name = (String){ .chars = NULL, .length = 0 }};
 		
+		// find the name of the model from the end of its file path
+		ModelNameFromModelPath(modelPaths.strings[index], &model->name);
+		// find the materials that this model uses
 		ParseModelData(model, modelData);
 	}
 	
@@ -1629,7 +1783,7 @@ void LoadModelData(PartInformation * part)
 	}
 	
 	// parse the model data file into an array of materials
-	ParseModelDatas(&part->models, modelDataFilesContents);
+	ParseModelDatas(&part->models, modelDataFilesContents, modelPaths);
 }
 
 //█▀▄ █ █▀█ █▀▀ █▀▀ ▀█▀ █▀█ █▀█ █▄█   █▄░█ ▄▀█ █░█ █ █▀▀ ▄▀█ ▀█▀ █ █▀█ █▄░█
@@ -1865,9 +2019,214 @@ void NavigateDirectory(String * selectedDirectory, String clickedDirectory, Part
 	return;
 }
 
-// draw the enteries of the selected directory and manage what happens if a directory is clicked
-void DirectoryNavigator(String * selectedDirectoryPath, PartInformation * part)
+//█▀▄ █▀█ ▄▀█ █░█░█ █ █▄░█ █▀▀
+//█▄▀ █▀▄ █▀█ ▀▄▀▄▀ █ █░▀█ █▄█
+
+// draws a horizontal scrollbar
+void DrawHorizontalScrollbar(Clay_ElementId scrollingContainer)
 {
+	// scrollbar settings
+	int scrollbarHeight = 20;
+	int arrowWidth = scrollbarHeight;
+	
+	Clay_Color scrollbarDefault = RaylibToClayColour(WHITE);
+	Clay_Color scrollbarHovered = RaylibToClayColour(LIGHTGRAY);
+	
+	// box that holds the scrollbar
+	CLAY_AUTO_ID({ .layout = { .layoutDirection = CLAY_LEFT_TO_RIGHT, .sizing = { .width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_FIXED(scrollbarHeight) } } })
+	{
+		// find the size of the content relative to the size of the container, use this to size the scrollbar
+		Clay_ScrollContainerData scrolledContent = Clay_GetScrollContainerData(scrollingContainer);
+		
+		// if the content has not been created yet
+		if (scrolledContent.scrollPosition == NULL)
+		{
+			return;
+		}
+		
+		// find how far the content has been scrolled, use this to position the scrollbar
+		float scrollX = scrolledContent.scrollPosition->x;
+		float contentWidth = scrolledContent.contentDimensions.width;
+		float containerWidth = scrolledContent.scrollContainerDimensions.width;
+		
+		// get information about the box that holds the scrollbar
+		Clay_ElementData scrollbar = Clay_GetElementData((Clay_ElementId){ .id = Clay_GetOpenElementId() });
+		// the width of the scrollable area
+		float scrollAreaWidth = scrollbar.boundingBox.width - (1 * arrowWidth);
+		// the proportion of the content that the containter can show
+		float contentContainterWidthProportion = containerWidth / contentWidth;
+		// the width of the scrollbar, capped to the width of the scrolling area
+		float scrollbarWidth = scrollAreaWidth * MinFloat(contentContainterWidthProportion, 1.0f);
+		
+		// position the scrollbar
+		// the maximum scroll the content can have
+		float maxContentScroll = containerWidth - contentWidth;
+		// the proportion (0 - 1) of the max scroll that the content has been scrolled
+		float contentScrollProportion = scrollX / (floatImprecisionBuffer + maxContentScroll);
+		// the furthest to the right the scroll bar can be positioned
+		float maxScrollbarXPosition = scrollAreaWidth - scrollbarWidth;
+		// the x position of the top of the scrollbar
+		float scrollbarX = maxScrollbarXPosition * contentScrollProportion;
+		
+		//printf("scroll bar x: %f, scroll bar width: %f\n", scrollbarX, scrollbarWidth);
+		
+		// left side arrow
+		CLAY_AUTO_ID({ .backgroundColor = RaylibToClayColour(WHITE), .cornerRadius = cornerRadius, .layout = { .sizing = { .width = CLAY_SIZING_FIXED(arrowWidth), .height = CLAY_SIZING_GROW() } } }) {}
+		// scrolling area
+		CLAY_AUTO_ID({ .layout = { .padding = { .left = 0, .right = 0, .top = 1, .bottom = 1 }, .sizing = { .width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_GROW() } }, .clip = { .vertical = false, .horizontal = true, .childOffset = { .x = scrollbarX, .y = 0 } } })
+		{
+			// if the area is hovered and click is held, scroll whatever scrolling container the scrollbar is connected to to wherever was clicked
+			if (Clay_Hovered() == true && IsMouseButtonDown(0) == true)
+			{
+				// find where on the scroll bar (proportionally) was clicked
+				float mouseX = GetMousePosition().x;
+				Clay_ElementData scrollArea = Clay_GetElementData((Clay_ElementId){ .id = Clay_GetOpenElementId() });
+				// the scroll bar should move to be centred on the mouse when clicked,
+				// therefore only a section at the middle of the scroll area where the scroll bar can be centred and not hit the ends of the scroll area is considered to represent the whole scroll area
+				// clicking outside of that area will count as scrolling all the way to the top / bottom
+				float scrollbarCentringBuffer = scrollbarWidth / 2;
+				float scrollAreaMin = scrollArea.boundingBox.x + scrollbarCentringBuffer;
+				float scrollAreaMax = scrollArea.boundingBox.x + scrollAreaWidth - scrollbarCentringBuffer;
+				float scrollAreaLength = scrollAreaMax - scrollAreaMin;
+				
+				// how far down the scroll area was clicked
+				float relativeMouseX = mouseX - scrollAreaMin;
+				// 0 - 1 representing how far along the scroll area was clicked
+				float proportionalMouseX = relativeMouseX / scrollAreaLength;
+				// find how much scrolling this corresponds to in the scrollable content
+				float contentScroll = maxContentScroll * proportionalMouseX;
+				//printf("content scroll %f\n", contentScroll);
+				// set the scroll of the content
+				scrolledContent.scrollPosition->x = contentScroll;
+			}
+			
+			// draw the scrolling bit of the scrollbar, draw a black one behind a slightly smaller one to make a border
+			CLAY_AUTO_ID({ .backgroundColor = RaylibToClayColour(BLACK), .cornerRadius = 5, .layout = { .padding = CLAY_PADDING_ALL(1), .sizing = { .height = CLAY_SIZING_GROW(), .width = CLAY_SIZING_FIXED(scrollbarWidth) } } })
+			{
+				CLAY_AUTO_ID({ .backgroundColor = Clay_Hovered() ? scrollbarHovered : scrollbarDefault , .cornerRadius = 4, .layout = { .sizing = { .height = CLAY_SIZING_GROW(), .width = CLAY_SIZING_GROW() } } }) { }
+			}
+		}
+	}
+}
+
+// draws a vertical scrollbar
+void DrawVerticalScrollbar(Clay_ElementId scrollingContainer)
+{
+	// scrollbar settings
+	int scrollbarWidth = 20;
+	int arrowHeight = scrollbarWidth;
+	
+	Clay_Color scrollbarDefault = RaylibToClayColour(WHITE);
+	Clay_Color scrollbarHovered = RaylibToClayColour(LIGHTGRAY);
+	
+	// box that holds the scrollbar
+	CLAY_AUTO_ID({ .layout = { .layoutDirection = CLAY_TOP_TO_BOTTOM, .sizing = { .width = CLAY_SIZING_FIXED(scrollbarWidth), .height = CLAY_SIZING_GROW() } } })
+	{
+		// find the size of the content relative to the size of the container, use this to size the scrollbar
+		Clay_ScrollContainerData scrolledContent = Clay_GetScrollContainerData(scrollingContainer);
+		
+		// if the content has not been created yet
+		if (scrolledContent.scrollPosition == NULL)
+		{
+			return;
+		}
+		
+		// find how far the content has been scrolled, use this to position the scrollbar
+		float scrollY = scrolledContent.scrollPosition->y;
+		float contentHeight = scrolledContent.contentDimensions.height;
+		float containerHeight = scrolledContent.scrollContainerDimensions.height;
+		
+		// get information about the box that holds the scrollbar
+		Clay_ElementData scrollbar = Clay_GetElementData((Clay_ElementId){ .id = Clay_GetOpenElementId() });
+		// the height of the scrollable area
+		float scrollAreaHeight = scrollbar.boundingBox.height - (2 * arrowHeight);
+		//printf("scroll area height: %f\n", scrollAreaHeight);
+		// the proportion of the content that the containter can show
+		float contentContainterHeightProportion = containerHeight / contentHeight;
+		// the height of the scrollbar, capped to the height of the scrolling area
+		float scrollbarHeight = scrollAreaHeight * MinFloat(contentContainterHeightProportion, 1.0f);
+		
+		// position the scrollbar
+		// the maximum scroll the content can have
+		float maxContentScroll = containerHeight - contentHeight;
+		// the proportion (0 - 1) of the max scroll that the content has been scrolled
+		float contentScrollProportion = scrollY / (floatImprecisionBuffer + maxContentScroll);
+		// the furthest down the scroll bar can be positioned
+		float maxScrollbarYPosition = scrollAreaHeight - scrollbarHeight;
+		// the y position of the top of the scrollbar
+		float scrollbarY = maxScrollbarYPosition * contentScrollProportion;
+		
+		//printf("scroll y: %f, content height: %f, container height: %f\n", scrollY, contentHeight, containerHeight);
+		//printf("scrollbar height: %f, scrollbar y: %f\n", scrollbarHeight, scrollbarY);
+	
+		// top arrow
+		CLAY_AUTO_ID({ .backgroundColor = RaylibToClayColour(WHITE), .cornerRadius = cornerRadius, .layout = { .sizing = { .width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_FIXED(arrowHeight) } } }) {}
+		// scrolling area
+		CLAY_AUTO_ID({ .layout = { .padding = { .left = 1, .right = 1, .top = 0, .bottom = 0 }, .sizing = { .width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_GROW() } }, .clip = { .vertical = true, .horizontal = false, .childOffset = { .x = 0, .y = scrollbarY } } })
+		{
+			// if the area is hovered and click is held, scroll whatever scrolling container the scrollbar is connected to to wherever was clicked
+			if (Clay_Hovered() == true && IsMouseButtonDown(0) == true)
+			{
+				// find where on the scroll bar (proportionally) was clicked
+				float mouseY = GetMousePosition().y;
+				Clay_ElementData scrollArea = Clay_GetElementData((Clay_ElementId){ .id = Clay_GetOpenElementId() });
+				// the scroll bar should move to be centred on the mouse when clicked,
+				// therefore only a section at the middle of the scroll area where the scroll bar can be centred and not hit the ends of the scroll area is considered to represent the whole scroll area
+				// clicking outside of that area will count as scrolling all the way to the top / bottom
+				float scrollbarCentringBuffer = scrollbarHeight / 2;
+				float scrollAreaMin = scrollArea.boundingBox.y + scrollbarCentringBuffer;
+				float scrollAreaMax = scrollArea.boundingBox.y + scrollAreaHeight - scrollbarCentringBuffer;
+				float scrollAreaLength = scrollAreaMax - scrollAreaMin;
+				
+				// how far down the scroll area was clicked
+				float relativeMouseY = mouseY - scrollAreaMin;
+				// 0 - 1 representing how far along the scroll area was clicked
+				float proportionalMouseY = relativeMouseY / scrollAreaLength;
+				// find how much scrolling this corresponds to in the scrollable content
+				float contentScroll = maxContentScroll * proportionalMouseY;
+				//printf("content scroll %f\n", contentScroll);
+				// set the scroll of the content
+				scrolledContent.scrollPosition->y = contentScroll;
+			}
+			
+			// draw the scrolling bit of the scrollbar, draw a black one behind a slightly smaller one to make a border
+			CLAY_AUTO_ID({ .backgroundColor = RaylibToClayColour(BLACK), .cornerRadius = 5, .layout = { .padding = CLAY_PADDING_ALL(1), .sizing = { .height = CLAY_SIZING_FIXED(scrollbarHeight), .width = CLAY_SIZING_GROW() } } })
+			{
+				CLAY_AUTO_ID({ .backgroundColor = Clay_Hovered() ? scrollbarHovered : scrollbarDefault , .cornerRadius = 4, .layout = { .sizing = { .height = CLAY_SIZING_GROW(), .width = CLAY_SIZING_GROW() } } }) { }
+			}
+		}
+		// bottom arrow
+		CLAY_AUTO_ID({ .backgroundColor = RaylibToClayColour(WHITE), .cornerRadius = cornerRadius, .layout = { .sizing = { .width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_FIXED(arrowHeight) } } }) {}
+	}
+}
+
+// sets current directory to the KSP install folder
+void SetSelectedDirectory(String ** directory)
+{
+	// should start at the folder called "Kerbal Space Program"
+	
+	int initialDirectorylength = 7; 			// string plus null byte
+	const char * initialDirectory = "../../";	
+	
+	String * initial = malloc(sizeof(String));
+	*initial = (String){ .length = initialDirectorylength, .chars = malloc(sizeof(char) * initialDirectorylength)};
+	memcpy(initial->chars, initialDirectory, sizeof(char) * initialDirectorylength);
+	
+	*directory = initial;
+}
+
+// draw the enteries of the selected directory and manage what happens if a directory is clicked
+void DirectoryNavigator(PartInformation * part)
+{
+	// the path to the currently selected directory in the file browser
+	// its a pointer so it can be static
+	static String * selectedDirectoryPath = NULL;
+	// set the selectedDirectoryPath the first time this function runs
+	if (selectedDirectoryPath == NULL)
+	{
+		SetSelectedDirectory(&selectedDirectoryPath);
+	}
+
 	// settings
 	Clay_Color directoryBackground = RaylibToClayColour(WHITE);
 	Clay_Color directoryHovered = RaylibToClayColour(SKYBLUE);
@@ -1884,83 +2243,99 @@ void DirectoryNavigator(String * selectedDirectoryPath, PartInformation * part)
 	rewinddir(selectedDirectory);
 	struct dirent * entry = readdir(selectedDirectory);
 	
-	// create a scrolling box to display the directories entries in
-	CLAY(CLAY_ID("DirectoryNavigator"), { .layout = { .sizing = { .width = CLAY_SIZING_FIT(), .height = CLAY_SIZING_GROW() }, .padding = CLAY_PADDING_ALL(padding), .childGap = padding, .layoutDirection = CLAY_TOP_TO_BOTTOM}, .clip = { .vertical = true, .horizontal = true, .childOffset = Clay_GetScrollOffset() } })
+	// create a box to store the horizontal scroll bar
+	CLAY_AUTO_ID({ .layout = { .layoutDirection = CLAY_TOP_TO_BOTTOM, .sizing = { .height = CLAY_SIZING_GROW(), .width = CLAY_SIZING_GROW() } } })
 	{
-		// draw all the entries in the directory
-		while (entry != NULL)
+		// create a scrolling box to display the directories entries in
+		CLAY(CLAY_ID("DirectoryNavigator"), { .layout = { .sizing = { .width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_GROW() }, .padding = CLAY_PADDING_ALL(padding), .childGap = padding, .layoutDirection = CLAY_TOP_TO_BOTTOM}, .clip = { .vertical = true, .horizontal = true, .childOffset = Clay_GetScrollOffset() } })
 		{
-			// draw a button with the name of the directory entry
-			CLAY_AUTO_ID({ .cornerRadius = 5, .backgroundColor = Clay_Hovered() ? directoryHovered : directoryBackground, .layout = { .sizing = { .width = CLAY_SIZING_FIT(), .height = CLAY_SIZING_FIT() }, .padding = CLAY_PADDING_ALL(padding) } })
+			// draw all the entries in the directory
+			while (entry != NULL)
 			{
-				// copy the directories name out of the dirent and add a null terminator
-				String directoryName = (String){ .length = strlen(entry->d_name), .chars = malloc(strlen(entry->d_name)) };
-				memcpy(directoryName.chars, entry->d_name, sizeof(char) * directoryName.length);
-				GarunteeNullTerminator(&directoryName);
-				// draw the name of the directory
-				CLAY_TEXT(MyToClayString(directoryName), { .textColor = textColour, .fontSize = fontSize, .fontId = 0 });
-				
-				// if this directory has been clicked on navigate to this directory
-				if (Clay_Hovered() && IsMouseButtonPressed(0))
+				// draw a button with the name of the directory entry
+				CLAY_AUTO_ID({ .cornerRadius = cornerRadius, .backgroundColor = Clay_Hovered() ? directoryHovered : directoryBackground, .layout = { .sizing = { .width = CLAY_SIZING_FIT(), .height = CLAY_SIZING_FIT() }, .padding = CLAY_PADDING_ALL(padding) } })
 				{
-					NavigateDirectory(selectedDirectoryPath, directoryName, part);
+					// copy the directories name out of the dirent and add a null terminator
+					String directoryName = (String){ .length = strlen(entry->d_name), .chars = malloc(strlen(entry->d_name)) };
+					memcpy(directoryName.chars, entry->d_name, sizeof(char) * directoryName.length);
+					GarunteeNullTerminator(&directoryName);
+					// draw the name of the directory
+					CLAY_TEXT(MyToClayString(directoryName), { .textColor = textColour, .fontSize = fontSize, .fontId = 0 });
+					
+					// if this directory has been clicked on navigate to this directory
+					if (Clay_Hovered() && IsMouseButtonPressed(0))
+					{
+						NavigateDirectory(selectedDirectoryPath, directoryName, part);
+					}
 				}
+				// read the next entry in the directory
+				entry = readdir(selectedDirectory);
 			}
-			// read the next entry in the directory
-			entry = readdir(selectedDirectory);
+			
+			closedir(selectedDirectory);
 		}
 		
-		closedir(selectedDirectory);
+		DrawHorizontalScrollbar(Clay_GetElementId(CLAY_STRING("DirectoryNavigator")));
+	}
+	
+	DrawVerticalScrollbar(Clay_GetElementId(CLAY_STRING("DirectoryNavigator")));
+}
+
+// copys a string to the clipboard if this element is clicked on
+void CopyIfClicked(String string)
+{
+	// if the value is clicked on, copy it to the clipboard
+	if (Clay_Hovered() && IsMouseButtonDown(0))
+	{
+		SetClipboardText(string.chars);
 	}
 }
 
-//█▀▄ █▀█ ▄▀█ █░█░█ █ █▄░█ █▀▀
-//█▄▀ █▀▄ █▀█ ▀▄▀▄▀ █ █░▀█ █▄█
-
-void DrawArrow(Vector2 startPos, Vector2 endPos, int width, Color colour)
+void DrawPropertyValue(String property, String value, String seperator, int valueMaxLength)
 {
-	Vector2 arrowHeadVector = Vector2Scale(Vector2Subtract(startPos, endPos), 0.2);
-	Vector2 arrowHeadOrthogonal = {.x = arrowHeadVector.y, .y = -arrowHeadVector.x};
+	// settings
+	Clay_Color valueHovered = RaylibToClayColour(SKYBLUE);
+	Clay_Color valueDefault = RaylibToClayColour(BLANK);
+	
+	// create a box that is a single line tall
+	// inside this will be the property and another box, with children arranged right to get the value on the other side of the box 
+	CLAY_AUTO_ID({ .layout = { .layoutDirection = CLAY_LEFT_TO_RIGHT, .sizing = { .height = CLAY_SIZING_FIT(), .width = CLAY_SIZING_GROW() } } })
+	{
+		// draw the property and seperator
+		CLAY_TEXT(MyToClayString(property), { .textColor = textColour, .fontSize = fontSize, .fontId = 0 });
+		CLAY_TEXT(MyToClayString(seperator), { .textColor = textColour, .fontSize = fontSize, .fontId = 0 });
 		
-	Vector2 arrowHeadLeftVector = Vector2Add(arrowHeadVector, arrowHeadOrthogonal);
-	Vector2 arrowHeadRightVector = Vector2Subtract(arrowHeadVector, arrowHeadOrthogonal);
-	DrawLineEx(startPos, endPos, width, colour);
-	DrawLineEx(endPos, Vector2Add(arrowHeadLeftVector, endPos), width, colour);
-	DrawLineEx(endPos, Vector2Add(arrowHeadRightVector, endPos), width, colour);
+		// create a child box that is right aligned to get the value on the right of the box
+		CLAY_AUTO_ID({ .cornerRadius = 2, .backgroundColor = Clay_Hovered() ? valueHovered : valueDefault, .layout = { .childAlignment = CLAY_ALIGN_X_RIGHT, .sizing = { .height = CLAY_SIZING_GROW(), .width = CLAY_SIZING_GROW() } } })
+		{
+			// copy the value to the clipboard if it is clicked
+			CopyIfClicked(value);
+			
+			// draw the value
+			Clay_String clampedValue = MyToClayString(ClampStringLength(value, valueMaxLength));
+			CLAY_TEXT(clampedValue, { .textColor = textColour, .fontSize = fontSize, .fontId = 0 });
+		}
+	}
 }
 
-// returns the height of the drawn properties
+// draws a module
 void DrawModule(Module module)
 {
 	// draw the modules type
 	Clay_String type = MyToClayString(module.type);
 	CLAY_TEXT(type, { .textColor = textColour, .fontSize = fontSize, .fontId = 0 });
 	
-	// draw the modules properties
+	// draw each of the modules properties
 	for (int propertyIndex = 0; propertyIndex < module.properties.length; propertyIndex ++)
 	{
-		// the property to draw
 		KeyValue property = module.properties.keysValues[propertyIndex];
-		
-		CLAY_AUTO_ID({ .layout = { .sizing = { .width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_FIT() } } })
-		{
-			// draw the key on the left
-			Clay_String key = MyToClayString(property.key);
-			CLAY_TEXT(key, { .textColor = textColour, .fontSize = fontSize, .fontId = 0 });
-			
-			CLAY_AUTO_ID({ .layout = { .childAlignment = CLAY_ALIGN_X_RIGHT, .sizing = { .height = CLAY_SIZING_GROW(), .width = CLAY_SIZING_GROW() } } })
-			{
-				// draw the value on the right
-				Clay_String value = MyToClayString(property.value);
-				CLAY_TEXT(value, { .textColor = textColour, .fontSize = fontSize, .fontId = 0 });
-			}
-		}
+		// draw the property
+		int valueMaxLength = 30;
+		DrawPropertyValue(property.key, property.value, (String){ .chars = " = ", .length = 4 }, valueMaxLength);
 	}
 	
 	// draw an arrow connecting to the verticall line drawn by the parent
 	// TODO: redo this
-//	int halfHeight = moduleHeight / 2;
-//	int halfChildHorizontalOffset = 25;
 //	DrawArrow((Vector2){ .x = moduleXPosition - halfChildHorizontalOffset, .y = moduleYPosition + halfHeight }, (Vector2){ .x = moduleXPosition, .y = moduleYPosition + halfHeight }, 1, RED);
 }
 
@@ -1970,21 +2345,34 @@ void DrawModuleTree(Module module)
 	// draw the module,
 	// create a box below the module to put children in
 	// draw each child in a stack a bit to the right in that box
+	int childOffset = 50;
+	
+	// if the top level part module has no type no part has been selected
+	if (module.parent == NULL && StringsEqual(module.type, (String) { .chars = NULL, .length = 0 }))
+	{
+		return;
+	}
 	
 	CLAY_AUTO_ID({ .layout = { .padding = CLAY_PADDING_ALL(padding) } })
 	{
-		CLAY_AUTO_ID({ .cornerRadius = 5, .backgroundColor = RaylibToClayColour(WHITE), .layout = { .layoutDirection = CLAY_TOP_TO_BOTTOM, .padding = CLAY_PADDING_ALL(padding) } })
+		CLAY_AUTO_ID({ .cornerRadius = cornerRadius, .backgroundColor = RaylibToClayColour(WHITE), .layout = { .layoutDirection = CLAY_TOP_TO_BOTTOM, .padding = CLAY_PADDING_ALL(padding) } })
 		{
 			// draw this module
 			DrawModule(module);
 		}
 	}
 	
+	// if there are no children do not create containers for one
+	if (module.children.length == 0)
+	{
+		return;
+	}
+	
 	// create the boxes for children
 	CLAY_AUTO_ID({ .layout = { .layoutDirection = CLAY_LEFT_TO_RIGHT, .sizing = { .height = CLAY_SIZING_FIT(), .width = CLAY_SIZING_GROW() } } })
 	{
 		// filler box to move the childen over a bit
-		CLAY_AUTO_ID({ .layout = { .sizing = { .width = CLAY_SIZING_FIXED(50), .height = CLAY_SIZING_GROW() } } }) {}
+		CLAY_AUTO_ID({ .layout = { .sizing = { .width = CLAY_SIZING_FIXED(childOffset), .height = CLAY_SIZING_GROW() } } }) {}
 		// box to put the children in
 		CLAY_AUTO_ID({ .layout = { .layoutDirection = CLAY_TOP_TO_BOTTOM } })
 		{
@@ -1997,41 +2385,56 @@ void DrawModuleTree(Module module)
 	}
 }
 
+void DrawPartModules(Module module)
+{
+	// create a box to store the horizontal scroll bar
+	CLAY_AUTO_ID({ .layout = { .layoutDirection = CLAY_TOP_TO_BOTTOM, .sizing = { .height = CLAY_SIZING_GROW(), .width = CLAY_SIZING_GROW() } } })
+	{
+		// a scrolling box to put the module tree in
+		CLAY(CLAY_ID("ModuleTree"), { .layout = { .layoutDirection = CLAY_TOP_TO_BOTTOM, .sizing = { .width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_GROW() } }, .clip = { .vertical = true, .horizontal = true, .childOffset = Clay_GetScrollOffset() } })
+		{
+			// draw the module tree, starting at this module
+			DrawModuleTree(module);
+		}
+		
+		DrawHorizontalScrollbar(Clay_GetElementId(CLAY_STRING("ModuleTree")));
+	}
+	
+	DrawVerticalScrollbar(Clay_GetElementId(CLAY_STRING("ModuleTree")));
+}
+
 // draws a single material
 void DrawMaterial(ModelMaterial material)
 {
-	// draw the materials name
-	CLAY_AUTO_ID({ .layout = { .layoutDirection = CLAY_LEFT_TO_RIGHT, .sizing = { .height = CLAY_SIZING_FIT(), .width = CLAY_SIZING_GROW() } } })
+	// settings
+	Clay_Color meshHovered = RaylibToClayColour(SKYBLUE);
+	Clay_Color meshDefault = RaylibToClayColour(BLANK);
+	
+	// draw the materials name with a yellow background
+	CLAY_AUTO_ID({ .cornerRadius = cornerRadius, .backgroundColor = RaylibToClayColour(YELLOW), .layout = { .padding = CLAY_PADDING_ALL(padding), .layoutDirection = CLAY_LEFT_TO_RIGHT, .sizing = { .height = CLAY_SIZING_FIT(), .width = CLAY_SIZING_GROW() } } })
 	{
-		CLAY_TEXT(CLAY_STRING("Material name: "), { .textColor = textColour, .fontSize = fontSize, .fontId = 0});
-		
-		CLAY_AUTO_ID({ .layout = { .childAlignment = CLAY_ALIGN_X_RIGHT, .sizing = { .height = CLAY_SIZING_GROW(), .width = CLAY_SIZING_GROW() } } })
-		{
-			Clay_String materialName = MyToClayString(material.materialName);
-			CLAY_TEXT(materialName, { .textColor = textColour, .fontSize = fontSize, .fontId = 0 });
-		}
+		DrawPropertyValue((String){ .chars = "Material name: ", .length = 16 }, material.materialName, (String){ 0 }, -1);
 	}
 	
 	// draw the shader type
-	CLAY_AUTO_ID({ .layout = { .layoutDirection = CLAY_LEFT_TO_RIGHT, .sizing = { .height = CLAY_SIZING_FIT(), .width = CLAY_SIZING_GROW() } } })
-	{
-		CLAY_TEXT(CLAY_STRING("Shader type: "), { .textColor = textColour, .fontSize = fontSize, .fontId = 0 });
-		
-		CLAY_AUTO_ID({ .layout = { .childAlignment = CLAY_ALIGN_X_RIGHT, .sizing = { .height = CLAY_SIZING_GROW(), .width = CLAY_SIZING_GROW() } } })
-		{
-			Clay_String shaderName = MyToClayString(material.shaderName);
-			CLAY_TEXT(shaderName, { .textColor = textColour, .fontSize = fontSize, .fontId = 0 });
-		}
-	}
+	DrawPropertyValue((String){ .chars = "Shader type: ", .length = 14 }, material.shaderName, (String){ 0 }, -1);
 	
 	// draw the meshes
 	CLAY_TEXT(CLAY_STRING("Meshes that use this material:"), { .textColor = textColour, .fontSize = fontSize, .fontId = 0});
-	CLAY_AUTO_ID({ .layout = { .padding = { .left = 2 * padding, .right = 0, .top = 0, .bottom = 0 }, .sizing = { .height = CLAY_SIZING_FIT(), .width = CLAY_SIZING_GROW() } } })
+	CLAY_AUTO_ID({ .layout = { .padding = { .left = 3 * padding, .right = 0, .top = 0, .bottom = 0 }, .layoutDirection = CLAY_TOP_TO_BOTTOM, .sizing = { .height = CLAY_SIZING_FIT(), .width = CLAY_SIZING_GROW() } } })
 	{
 		for (int index = 0; index < material.meshes.length; index ++)
 		{
-			Clay_String mesh = MyToClayString(material.meshes.strings[index]);
-			CLAY_TEXT(mesh, { .textColor = textColour, .fontSize = fontSize, .fontId = 0 });
+			// highlight the mesh if it is hovered over
+			CLAY_AUTO_ID({ .cornerRadius = 2, .backgroundColor = Clay_Hovered() ? meshHovered : meshDefault , .layout = { .sizing = { .height = CLAY_SIZING_GROW(), .width = CLAY_SIZING_GROW() } } })
+			{
+				// copy the mesh name to the clipboard if it is clicked
+				CopyIfClicked(material.meshes.strings[index]);
+				
+				// draw the name of the mesh
+				Clay_String mesh = MyToClayString(material.meshes.strings[index]);
+				CLAY_TEXT(mesh, { .textColor = textColour, .fontSize = fontSize, .fontId = 0 });
+			}
 		}
 	}
 	
@@ -2040,28 +2443,18 @@ void DrawMaterial(ModelMaterial material)
 	{
 		KeyValue property = material.properties.keysValues[index];
 		
-		CLAY_AUTO_ID({ .layout = { .layoutDirection = CLAY_LEFT_TO_RIGHT, .sizing = { .height = CLAY_SIZING_FIT(), .width = CLAY_SIZING_GROW() } } })
-		{
-			// draw the key on the left
-			Clay_String key = MyToClayString(property.key);
-			CLAY_TEXT(key, { .textColor = textColour, .fontSize = fontSize, .fontId = 0 });
-			
-			// draw the value on the right
-			CLAY_AUTO_ID({ .layout = { .childAlignment = CLAY_ALIGN_X_RIGHT, .sizing = { .height = CLAY_SIZING_GROW(), .width = CLAY_SIZING_GROW() } } })
-			{
-				Clay_String value = MyToClayString(property.value);
-				CLAY_TEXT(value, { .textColor = textColour, .fontSize = fontSize, .fontId = 0 });
-			}
-		}
+		DrawPropertyValue(property.key, property.value, (String){ .chars = " : ", .length = 4 }, -1);
 	}
 }
 
 // draws the materials of a model
 void DrawMaterials(MuModel model)
 {
-	CLAY_AUTO_ID({ .cornerRadius = 5, .backgroundColor = RaylibToClayColour(WHITE), .layout = { .layoutDirection = CLAY_TOP_TO_BOTTOM, .sizing = { .width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_FIT() }, .padding = CLAY_PADDING_ALL(padding), .childGap = padding } })
+	CLAY_AUTO_ID({ .cornerRadius = cornerRadius, .backgroundColor = RaylibToClayColour(WHITE), .layout = { .layoutDirection = CLAY_TOP_TO_BOTTOM, .sizing = { .width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_FIT() }, .padding = CLAY_PADDING_ALL(padding), .childGap = padding } })
 	{
-		//printf("drawing: %d materials\n", model.length);
+		// draw the name of the model
+		DrawPropertyValue((String){ .chars = "Model name: ", .length = 13 }, model.name, (String){ 0 }, -1);
+		
 		for (int index = 0; index < model.length; index ++)
 		{
 			ModelMaterial material = model.materials[index];
@@ -2073,13 +2466,51 @@ void DrawMaterials(MuModel model)
 // draws an array of models
 void DrawModels(ModelArray models)
 {
-	CLAY(CLAY_ID("Models"), { .layout = { .layoutDirection = CLAY_TOP_TO_BOTTOM, .sizing = { .width = CLAY_SIZING_FIT(), .height = CLAY_SIZING_GROW() }, .padding = CLAY_PADDING_ALL(padding), .childGap = padding }, .clip = { .vertical = true, .childOffset = Clay_GetScrollOffset() } })
+	// create a box to store the horizontal scroll bar
+	CLAY_AUTO_ID({ .layout = { .layoutDirection = CLAY_TOP_TO_BOTTOM, .sizing = { .height = CLAY_SIZING_GROW(), .width = CLAY_SIZING_GROW() } } })
 	{
-		//printf("drawing: %d models\n", models.length);
-		for (int index = 0; index < models.length; index ++)
+		// a scrolling box to put the models in
+		CLAY(CLAY_ID("Models"), { .layout = { .layoutDirection = CLAY_TOP_TO_BOTTOM, .sizing = { .width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_GROW() }, .padding = CLAY_PADDING_ALL(padding), .childGap = padding }, .clip = { .vertical = true, .horizontal = true, .childOffset = Clay_GetScrollOffset() } })
 		{
-			MuModel model = models.models[index];
-			DrawMaterials(model);
+			//printf("drawing: %d models\n", models.length);
+			for (int index = 0; index < models.length; index ++)
+			{
+				MuModel model = models.models[index];
+				DrawMaterials(model);
+			}
+		}
+		
+		DrawHorizontalScrollbar(Clay_GetElementId(CLAY_STRING("Models")));
+	}
+	
+	DrawVerticalScrollbar(Clay_GetElementId(CLAY_STRING("Models")));
+}
+
+const int navbarHeight = 100;
+// draws the navbar and checks which buttons are pressed
+void DrawNavbar(UiStatus * ui)
+{
+	// settings
+	Clay_Color buttonDefault = RaylibToClayColour(WHITE);
+	Clay_Color buttonHovered = RaylibToClayColour(SKYBLUE);
+
+	CLAY(CLAY_ID("NavBar"), { .layout = { .padding = CLAY_PADDING_ALL(padding), .sizing = { .width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_FIXED(navbarHeight) } }, .backgroundColor = RaylibToClayColour(RED) })
+	{
+		CLAY(CLAY_ID("OpenCloseFileBrowserButton"), { .aspectRatio = { .aspectRatio = 1.0f }, .cornerRadius = cornerRadius, .backgroundColor = Clay_Hovered() ? buttonHovered : buttonDefault, .layout = { .sizing = { .height = CLAY_SIZING_GROW(), .width = CLAY_SIZING_GROW() }, .childAlignment = { .x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER }, .childGap = padding } })
+		{
+			if (ui->fileBrowserOpen == true)
+			{
+				CLAY_TEXT(CLAY_STRING("Close"), { .textColor = textColour, .fontSize = fontSize, .fontId = 0});
+			}
+			else
+			{
+				CLAY_TEXT(CLAY_STRING("Open"), { .textColor = textColour, .fontSize = fontSize, .fontId = 0});
+			}
+			
+			if (Clay_Hovered() == true && IsMouseButtonPressed(0) == true)
+			{
+				ui->fileBrowserOpen = !ui->fileBrowserOpen;
+			}
 		}
 	}
 }
@@ -2094,25 +2525,27 @@ int main(void)
 	int screenHeight = 800;
 	const char * title = "Recolour maker";
 	
+	// create a window
 	Clay_Raylib_Initialize(screenWidth, screenHeight, title, FLAG_WINDOW_RESIZABLE);
-	
-	Font fonts[2];
+	// load a font for clay to use
+	Font fonts[1];
 	fonts[0] = LoadFontEx("Roboto-Regular.ttf", 48, 0, 400);
-	fonts[1] = GetFontDefault();
-	
-	uint64_t clayRequiredMemory = Clay_MinMemorySize();
+	SetTextureFilter(fonts[0].texture, TEXTURE_FILTER_BILINEAR);
+	// initialise clay
+	int memoryMultiplier = 10;	// opening debug mode without this crashes the program 🦐️
+	uint64_t clayRequiredMemory = memoryMultiplier * Clay_MinMemorySize();
 	Clay_Arena clayMemory = Clay_CreateArenaWithCapacityAndMemory(clayRequiredMemory, malloc(clayRequiredMemory));
 	Clay_Initialize(clayMemory, (Clay_Dimensions){ .width = GetScreenWidth(), .height = GetScreenHeight() }, (Clay_ErrorHandler){ .errorHandlerFunction = HandleClayErrors, .userData = NULL });
 	Clay_SetMeasureTextFunction(Raylib_MeasureText, fonts);
 	
-	Clay_SetDebugModeEnabled(true);
-	
-	// the path to the currently selected directory in the file browser
-	String selectedDirectoryPath = { 0 };
-	ResetCurrentDirectory(&selectedDirectoryPath);
-	
 	// the currently selected part
 	PartInformation selectedPart = { 0 };
+	
+	// is debug mode on
+	bool debug = false;
+	
+	// what windows are open
+	UiStatus ui = (UiStatus){ .fileBrowserOpen = true, .moduleTreeOpen = true, .onlyImportantModules = false, .modelListOpen = true, .onlyImportantMaterials = false };
 	
 	SetTargetFPS(60); // target framerate
 	SetExitKey(KEY_BACKSPACE); // key to close the game
@@ -2124,55 +2557,70 @@ int main(void)
 		Vector2 mousePosition = GetMousePosition();
 		Vector2 mouseWheelMovement = GetMouseWheelMoveV();
 		
+		// hold control to scroll horizontally
+		if(IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL))
+		{
+			float x = mouseWheelMovement.x;
+			mouseWheelMovement.x = mouseWheelMovement.y;
+			mouseWheelMovement.y = x;
+		}
+		
 		// hold shift to scroll faster
 		float scrollMultiplier = 10;
-		if (IsKeyDown(KEY_LEFT_SHIFT) == true || IsKeyDown(KEY_RIGHT_SHIFT) == true)
+		if (IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT))
 		{
 			mouseWheelMovement = Vector2Scale(mouseWheelMovement, scrollMultiplier);
+		}
+		
+		// turn on / off debug mode
+		if (IsKeyPressed(KEY_D) == true)
+		{
+			debug = !debug;
+			Clay_SetDebugModeEnabled(debug);
 		}
 		
 		// clay update logic
 		Clay_SetLayoutDimensions((Clay_Dimensions){ .width = GetScreenWidth(), .height = GetScreenHeight() });
 		Clay_SetPointerState((Clay_Vector2){ .x = mousePosition.x, .y = mousePosition.y }, IsMouseButtonDown(0));
-		Clay_UpdateScrollContainers(true, (Clay_Vector2){ .x = mouseWheelMovement.x, .y = mouseWheelMovement.y }, deltaTime);
+		Clay_UpdateScrollContainers(false, (Clay_Vector2){ .x = mouseWheelMovement.x, .y = mouseWheelMovement.y }, deltaTime);
 		
 		// enable ui building
 		Clay_BeginLayout();
 		
-		// ui settings
-		int navBarHeight = 100;
-		
 		// a window that fills the whole screen
 		CLAY(CLAY_ID("MainWindow"), { .layout = { .layoutDirection = CLAY_TOP_TO_BOTTOM, .sizing = { .width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_GROW() } } })
 		{
-			// navbar
-			CLAY(CLAY_ID("NavBar"), { .layout = { .sizing = { .width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_FIXED(navBarHeight) } }, .backgroundColor = RaylibToClayColour(WHITE) })
-			{
-				
-			}
+			DrawNavbar(&ui);
+			
 			// holds the boxes that hold the functions of the program
 			CLAY(CLAY_ID("Content"), { .layout = { .layoutDirection = CLAY_LEFT_TO_RIGHT, .sizing = { .width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_GROW() } } })
 			{
-				// the box that holds the directory navigator
-				CLAY(CLAY_ID("NavigatorBox"), { .layout = { .sizing = { .width = CLAY_SIZING_PERCENT(0.2f), .height = CLAY_SIZING_GROW() } } })
+				if (ui.fileBrowserOpen == true)
 				{
-					// draw the directory navigator
-					DirectoryNavigator(&selectedDirectoryPath, &selectedPart);
-				}
-				// box that holds the part's module tree
-				CLAY(CLAY_ID("ModuleTreeBox"), { .layout = { .sizing = { .width = CLAY_SIZING_PERCENT(0.4f), .height = CLAY_SIZING_GROW() } } })
-				{
-					CLAY_AUTO_ID({ .layout = { .layoutDirection = CLAY_TOP_TO_BOTTOM, .sizing = { .width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_GROW() } }, .clip = { .vertical = true, .horizontal = true, .childOffset = Clay_GetScrollOffset() } })
+					// the box that holds the directory navigator
+					CLAY(CLAY_ID("NavigatorBox"), { .layout = { .sizing = { .width = CLAY_SIZING_FIT(), .height = CLAY_SIZING_GROW() } } })
 					{
-						// draw the module tree
-						DrawModuleTree(selectedPart.modules);
+						// draw the directory navigator and handle clicking on directories
+						DirectoryNavigator(&selectedPart);
 					}
 				}
-				// box that holds the part's models
-				CLAY(CLAY_ID("ModelsBox"), { .layout = { .sizing = { .width = CLAY_SIZING_PERCENT(0.4f), .height = CLAY_SIZING_GROW() } } })
+				if (ui.moduleTreeOpen == true)
 				{
-					// draw the models
-					DrawModels(selectedPart.models);
+					// box that holds the part's module tree
+					CLAY(CLAY_ID("ModuleTreeBox"), { .layout = { .sizing = { .width = CLAY_SIZING_FIT(), .height = CLAY_SIZING_GROW() } } })
+					{
+						// draw the modules
+						DrawPartModules(selectedPart.modules);
+					}
+				}
+				if (ui.modelListOpen == true)
+				{
+					// box that holds the list of the part's models
+					CLAY(CLAY_ID("ModelListBox"), { .layout = { .sizing = { .width = CLAY_SIZING_FIT(), .height = CLAY_SIZING_GROW() } } })
+					{
+						// draw the models
+						DrawModels(selectedPart.models);
+					}
 				}
 			}
 		}
