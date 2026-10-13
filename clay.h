@@ -1147,7 +1147,8 @@ typedef struct                                      \
 CLAY__ARRAY_DEFINE_FUNCTIONS(typeName, arrayName)   \
 
 Clay_Context *Clay__currentContext;
-int32_t Clay__defaultMaxElementCount = 8192;
+#define elementCountMultiplier 2 // program crashes when opening debug mode without this
+int32_t Clay__defaultMaxElementCount = elementCountMultiplier * 8192;
 int32_t Clay__defaultMaxMeasureTextWordCacheCount = 16384;
 
 void Clay__ErrorHandlerFunctionDefault(Clay_ErrorData errorText) {

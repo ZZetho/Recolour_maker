@@ -235,6 +235,9 @@ void Clay_Raylib_Render(Clay_RenderCommandArray renderCommands, Font* fonts)
                     (Vector2) {},
                     0,
                     CLAY_COLOR_TO_RAYLIB_COLOR(tintColor));
+                    
+                    //printf("drawing texture, width: %d, height: %d\n", imageTexture.width, imageTexture.width);
+                    
                 break;
             }
             case CLAY_RENDER_COMMAND_TYPE_SCISSOR_START: {

@@ -1,8 +1,9 @@
 // TODO list:
-// add model names to models
-// add buttons that open / close the function windows
 // add a way to figure out what it will take to recolour a part
-// bug: fix checking if a config file is for a part, eg: ../../GameData/TantaresLV/parts/BLOK_E/_AndromedaUS_VernierEngine_1.cfg
+// bug: ../../GameData/TantaresLV/parts/BLOK_E/_AndromedaUS_VernierEngine_1.cfg not recognised as part config
+// bug: ../../GameData/Tantares/parts/core_lk_v2/lk_v2_fuel_tank_s0_1.cfg model data reading does not work
+// bug: ../../GameData/B9_Aerospace_Legacy/Parts/Utility_Landing_Gear_HDG/HDG1L.cfg not recognised as part cfg
+// bug: ../../GameData/B9_Aerospace_Legacy/Parts/Aero_Wing_HW21/part.cfg model not found
 // when parsing modules, more checks for being commented out
 
 // DONE list:
@@ -20,10 +21,15 @@
 // add horizontal scrolling to function windows
 // add scrollbar to function windows
 // add horizontal scroll bars
+// add model names to models
+// add buttons that open / close the function windows
+// only show important modules / materials
+// fix memory leaks
 
 #define CLAY_IMPLEMENTATION
 #include "clay.h"
 #include "clay_renderer_raylib.c"
+// note: we cant use CLAY_STRING, the program will crash
 
 #include <raylib.h>
 #include <raymath.h>
@@ -36,6 +42,7 @@
 
 #define int int32_t
 
+// global variables
 const int nullTerminator = 1;
 const float floatImprecisionBuffer = 0.001f;
 
@@ -47,6 +54,13 @@ const Clay_Color textColour = (Clay_Color){ .r = 0, .b = 0, .g = 0, .a = 255};
 
 //▀█▀ █▄█ █▀█ █▀▀ █▀
 //░█░ ░█░ █▀▀ ██▄ ▄█
+
+typedef struct IntArray
+{
+	int * ints;
+	int length;
+}
+IntArray;
 
 // char array
 typedef struct String
@@ -96,21 +110,46 @@ struct Module
 	KeyValueArray properties;
 };
 
+typedef struct ModelMaterial ModelMaterial;
+
+// meshes that make up models
+// raylib already took "Mesh"
+typedef struct ModelMesh
+{
+	String name;
+	int materialIndex;		// indes into the models material array of the material this mesh uses
+}
+ModelMesh;
+
+typedef struct MeshArray
+{
+	ModelMesh * meshes;
+	int length;
+}
+MeshArray;
+
 // the materials that are used on meshes
-typedef struct ModelMaterial
+// raylib already took "Material"
+struct ModelMaterial
 {
 	String materialName;
 	String shaderName;
-	StringArray meshes;		// the meshes that use this material
+	IntArray meshIndexes;		// the indexes into the models mesh array of the meshes that use this material
 	KeyValueArray properties;
+};
+
+typedef struct MaterialArray
+{
+	ModelMaterial * materials;
+	int length;
 }
-ModelMaterial;
+MaterialArray;
 
 // a model (.mu) used by parts
 typedef struct MuModel
 {
-	ModelMaterial * materials;
-	int length;
+	MeshArray meshes;
+	MaterialArray materials;
 	String name;
 }
 MuModel;
@@ -139,21 +178,67 @@ typedef struct UiStatus
 {
 	bool fileBrowserOpen;
 	bool moduleTreeOpen;
-	bool onlyImportantModules;
+	bool onlyRelevantModules;
 	bool modelListOpen;
-	bool onlyImportantMaterials;
+	bool onlyRelevantMaterials;
 }
 UiStatus;
 
-typedef struct TextureArray
+// texture with a name so it can be identified
+typedef struct NamedTexture
 {
-	Texture * textures;
+	Texture texture;
+	String name;
+}
+NamedTexture;
+
+typedef struct NamedTextureArray
+{
+	NamedTexture * textures;
 	int length;
 }
-TextureArray;
+NamedTextureArray;
+
+// global sprite atlas
+const NamedTextureArray * spriteAtlas;
 
 //█▀▄▀█ █ █▀ █▀▀
 //█░▀░█ █ ▄█ █▄▄
+
+// an array of arrays of dynamically allocated chars from dynamically allocated Clay_String's
+// these cant be freed normally in the middle if the frame because clay needs them to render the ui
+// so they are collected here untill after rendering when they are freed
+typedef struct DynamicClayStringCharsArray
+{
+	char ** charArrays;
+	int length;
+}
+DynamicClayStringCharsArray;
+
+// add the chars from dynamic clay strings here to have them freed at the end of a frame
+DynamicClayStringCharsArray freeQueue = (DynamicClayStringCharsArray){ .charArrays = NULL, .length = 0 };
+
+// add a char array to be freed at the and of the frame
+void AddToFreeQueue(char * chars)
+{
+	freeQueue.length += 1;
+	freeQueue.charArrays = realloc(freeQueue.charArrays, sizeof(char *) * freeQueue.length);
+	freeQueue.charArrays[freeQueue.length - 1] = chars;
+}
+
+// free the chars
+// call this after the rendering step
+void FreeFreeQueue()
+{
+	for (int index = 0; index < freeQueue.length; index ++)
+	{
+		char * chars = freeQueue.charArrays[index];
+		free(chars);
+	}
+	
+	freeQueue.length = 0;
+	freeQueue.charArrays = realloc(freeQueue.charArrays, sizeof(char *) * freeQueue.length);
+}
 
 // required by clay
 void HandleClayErrors(Clay_ErrorData errorData)
@@ -466,13 +551,24 @@ String ClayToMyString(Clay_String clayString)
 }
 
 // converts one of my strings to a clay string
+// the chars are automatically freed at the end of the frame
+// string.chars cannot be freed immediatley after use if the output is being put into CLAY_TEXT, as clay needs to use the chars later in the rendering step
 Clay_String MyToClayString(String myString)
 {
+	// do not include the null terminator (if it exists)
+	int length = myString.length;
+	if (HasNullTerminator(myString) == true)
+	{
+		length -= 1;
+	}
+	
 	// create a palce to store the chars as we cant memcpy to Clay_String.chars as it is const
-	char * chars = malloc(sizeof(char) * myString.length);
-	memcpy(chars, myString.chars, sizeof(char) * myString.length);
+	char * chars = malloc(sizeof(char) * length);
+	memcpy(chars, myString.chars, sizeof(char) * length);
 	// point to the new char array
-	Clay_String string = (Clay_String){ .isStaticallyAllocated = false, .length = myString.length, .chars = chars };
+	Clay_String string = (Clay_String){ .isStaticallyAllocated = false, .length = length, .chars = chars };
+	// queue the cahrs for freeing at the end of the frame
+	AddToFreeQueue(chars);
 	return string;
 }
 
@@ -521,6 +617,43 @@ bool StringsEqual(String a, String b)
 	return true;
 }
 
+// checks if a string equals any of those in an array
+bool StringEqualToAny(String a, StringArray strings)
+{
+	for (int index = 0; index < strings.length; index ++)
+	{
+		if (StringsEqual(a, strings.strings[index]) == true)
+		{
+			return true;
+		}
+	}
+	
+	return false;
+}
+
+bool KeyValuesEqual(KeyValue a, KeyValue b)
+{
+	if (StringsEqual(a.key, b.key) == true && StringsEqual(a.value, b.value) == true)
+	{
+		return true;
+	}
+	
+	return false;
+}
+
+bool KeyValueEqualToAny(KeyValue a, KeyValueArray keysValues)
+{
+	for (int index = 0; index < keysValues.length; index ++)
+	{
+		if (KeyValuesEqual(a, keysValues.keysValues[index]) == true)
+		{
+			return true;
+		}
+	}
+	
+	return false;
+}
+
 // extracts a string from a larger string
 String ExtractString(String extractee, int startIndex, int endIndex)
 {
@@ -563,7 +696,7 @@ String ExtractString(String extractee, int startIndex, int endIndex)
 }
 
 // adds the second string to the end of the first one
-String ConcatenateStrings(String stringOne, String stringTwo)
+void ConcatenateStrings(String stringOne, String stringTwo, String * output)
 {
 	GarunteeNullTerminator(&stringOne);
 	GarunteeNullTerminator(&stringTwo);
@@ -576,15 +709,12 @@ String ConcatenateStrings(String stringOne, String stringTwo)
 	// cheese\0			(length 7)
 	// -> eggcheese\0	(length 10)
 	
-	String output = { 0 };
 	int stringTwoAddIndex = stringOne.length - 1;
 	int outputLength = stringOne.length + stringTwo.length - 1;
-	ResizeString(&output, outputLength);
+	ResizeString(output, outputLength);
 	
-	memcpy(output.chars, stringOne.chars, sizeof(char) * stringOne.length);
-	memcpy(&output.chars[stringTwoAddIndex], stringTwo.chars, sizeof(char) * stringTwo.length);
-	
-	return output;
+	memcpy(output->chars, stringOne.chars, sizeof(char) * stringOne.length);
+	memcpy(&output->chars[stringTwoAddIndex], stringTwo.chars, sizeof(char) * stringTwo.length);
 }
 
 // checks if a string starts with another string
@@ -658,34 +788,32 @@ int IndexOfSubstring(String string, int startIndex, String subString)
 }
 
 // returns a string that is no more than length long
-String ClampStringLength(String string, int maxLength)
+void ClampStringLength(String string, String * newString, int maxLength)
 {
-	if (string.length < maxLength)
+	// copy the string into the new one
+	ResizeString(newString, string.length);
+	memcpy(newString->chars, string.chars, sizeof(char) * string.length);
+	
+	// if the string is short enough or maxLength is -1 (ignore max length)
+	// do not shorten
+	if (string.length < maxLength || maxLength == -1)
 	{
-		return string;
+		return;
 	}
 	
-	if (maxLength == -1)
-	{
-		return string;
-	}
-	
-	// copy the string and shorten it
-	String shortened = { 0 };
-	ResizeString(&shortened, string.length);
-	memcpy(shortened.chars, string.chars, sizeof(char) * string.length);
-	ResizeString(&shortened, maxLength - 3);
+	// shorten the new string
+	ResizeString(newString, maxLength - 3);
 	
 	// add ... the end of the string
-	AddCharToEndOfString(&shortened, '.');
-	AddCharToEndOfString(&shortened, '.');
-	AddCharToEndOfString(&shortened, '.');
-	GarunteeNullTerminator(&shortened);
+	AddCharToEndOfString(newString, '.');
+	AddCharToEndOfString(newString, '.');
+	AddCharToEndOfString(newString, '.');
+	GarunteeNullTerminator(newString);
 	
-//	printf("clamped string: ");
-//	BetterPrint(shortened);
+	//printf("clamped string: ");
+	//BetterPrint(*newString);
 	
-	return shortened;
+	return;
 }
 
 // returns the index of a key in a key value array
@@ -704,77 +832,39 @@ int IndexOfKey(KeyValueArray array, String key)
 }
 
 // finds the value associated with a key
-String ValueOfKey(KeyValueArray array, String key)
+void ValueOfKey(KeyValueArray array, String key, String * output)
 {
+	*output = (String){ .chars = NULL, .length = 0 };
 	int keyIndex = IndexOfKey(array, key);
 	
 	if (keyIndex == -1)
 	{
-		return (String){ .chars = NULL, .length = 0 };
+		return;
 	}
 	
 	String value = array.keysValues[keyIndex].value;
-	return value;
+	
+	output->length = value.length;
+	ResizeString(output, output->length);
+	memcpy(output->chars, value.chars, output->length);
+}
+
+void FreeStringArray(StringArray * stringArray)
+{
+	for (int index = 0; index < stringArray->length; index ++)
+	{
+		String string = stringArray->strings[index];
+		free(string.chars);
+	}
+	
+	free(stringArray->strings);
 }
 
 //█▀▀ █ █░░ █▀▀   █░█ ▄▀█ █▄░█ █▀▄ █░░ █ █▄░█ █▀▀
 //█▀░ █ █▄▄ ██▄   █▀█ █▀█ █░▀█ █▄▀ █▄▄ █ █░▀█ █▄█
 
-// loads all of the images in the Sprites directory into an array of textures
-void LoadSprites(TextureArray * textures)
-{
-	String spritesLocation = (String){ .chars = "Sprites/", .length = 9 };
-	DIR * spriteDirectory = opendir(spritesLocation.chars);
-	
-	if (spriteDirectory == NULL)
-	{
-		int err = errno;
-		printf("ERROR: Could not open: %s because: %s\n", spritesLocation.chars, strerror(err));
-		return;
-	}
-	
-	// read all of the entries in the directory and load all as .png files as textures
-	struct dirent * entry = readdir(spriteDirectory);
-	
-	while (entry != NULL)
-	{
-		int entryNameLength = strlen(entry->d_name);
-		//printf("entry name length: %d\n", entryNameLength);
-		//printf("entry name: %s\n", entry->d_name);
-		
-		// check if the entry name ends in .png
-		if (entryNameLength > 4 && entry->d_name[entryNameLength - 1] == 'g' && entry->d_name[entryNameLength - 2] == 'n' && entry->d_name[entryNameLength - 3] == 'p' && entry->d_name[entryNameLength - 4] == '.')
-		{
-			// build the path to the texture from the game executable
-			// start with Sprites/
-			String texturePath = (String){ .chars = NULL, .length = 0 };
-			ResizeString(&texturePath, spritesLocation.length);
-			memcpy(texturePath.chars, spritesLocation.chars, sizeof(char) * spritesLocation.length);
-			// add the name of the .png file
-			ResizeString(&texturePath, texturePath.length + entryNameLength);
-			memcpy(&texturePath.chars[spritesLocation.length - 1], entry->d_name, sizeof(char) * entryNameLength);
-			
-			// load the .png as a texture
-			Texture newTexture =  LoadTexture(texturePath.chars);
-			
-			// add the new texture to the array
-			textures->length += 1;
-			textures->textures = realloc(textures->textures, textures->length * sizeof(Texture));
-			textures->textures[textures->length - 1] = newTexture;
-			
-			free(texturePath.chars);
-			
-			//printf("loaded texture: '%s' \n", textureName.chars);
-		}
-		// read the next entry in the directory
-		entry = readdir(spriteDirectory);
-	}
-	
-	closedir(spriteDirectory);
-}
-
 // reads a whole file as a string
-String ReadFile(String filePath)
+void ReadFile(String filePath, String * output)
 {
 	// try and open the file
 	FILE * file = fopen(filePath.chars, "r");
@@ -784,19 +874,18 @@ String ReadFile(String filePath)
 		int err = errno;
 		printf("ERROR: Could not open: %s because: %s\n", filePath.chars, strerror(err));
 		
-		return (String){ 0 };
+		return;
 	}
 	
 	printf("reading file: %s\n", filePath.chars);
 	
 	// read the data from the config file
 	const size_t bufferSize = 100;
-	String buffer = (String){ 0 };
+	String buffer = (String){ .chars = NULL, .length = 0 };
 	ResizeString(&buffer, bufferSize);
 	
-	int writeIndex = 0;					// the index to write to in the otuput from the buffer
-	String output = (String) { 0 };
-	ResizeString(&output, 0);			// clear the otuput
+	int writeIndex = 0;			// the index to write to in the otuput from the buffer
+	ResizeString(output, 0);	// clear the otuput
 	
 	size_t readObjectCount = 0;	// how many chars have been read this read cycle
 	
@@ -806,11 +895,11 @@ String ReadFile(String filePath)
 		readObjectCount = fread(buffer.chars, sizeof(char), buffer.length, file);
 		
 		// add the number read chars
-		int configFileSize = output.length + readObjectCount;
-		ResizeString(&output, configFileSize);
+		int configFileSize = output->length + readObjectCount;
+		ResizeString(output, configFileSize);
 		
 		// copy the read chars from the buffer to the config file string
-		memcpy(&output.chars[writeIndex], buffer.chars, sizeof(char) * readObjectCount);
+		memcpy(&output->chars[writeIndex], buffer.chars, sizeof(char) * readObjectCount);
 		
 		// advance the write index
 		writeIndex += readObjectCount;
@@ -828,35 +917,27 @@ String ReadFile(String filePath)
 		}
 	}
 	
-	GarunteeNullTerminator(&output);
+	GarunteeNullTerminator(output);
 	
 	// the whole config file has been read, close it
 	fclose(file);
-	
-	return output;
+	free(buffer.chars);
 }
 
 // read from an array of file paths
-StringArray ReadFiles(StringArray filePaths)
+void ReadFiles(StringArray filePaths, StringArray * output)
 {
-	StringArray filesContents = (StringArray){ .strings = NULL, .length = 0 };
+	*output = (StringArray){ .strings = NULL, .length = 0 };
 	
 	for (int index = 0; index < filePaths.length; index ++)
 	{
-		String fileContents = ReadFile(filePaths.strings[index]);
+		String fileContents = (String){ .chars = NULL, .length = 0 };
+		ReadFile(filePaths.strings[index], &fileContents);
 		
-		if (fileContents.length == 0)
-		{
-			// if failed to read from the file
-			continue;
-		}
-		
-		filesContents.length += 1;
-		filesContents.strings = realloc(filesContents.strings, sizeof(String) * filesContents.length);
-		filesContents.strings[filesContents.length - 1] = fileContents;
+		output->length += 1;
+		output->strings = realloc(output->strings, sizeof(String) * output->length);
+		output->strings[output->length - 1] = fileContents;
 	}
-	
-	return filesContents;
 }
 
 //█▀▀ █▀█ █▄░█ █▀▀ █ █▀▀   █▀▀ █ █░░ █▀▀   █▀█ ▄▀█ █▀█ █▀ █ █▄░█ █▀▀
@@ -910,6 +991,12 @@ bool IsPartConfig(String configFile)
 // returns the index of the next //
 int IndexOfNextComment(String configFile, int startIndex)
 {
+	// 012345// (8)
+	// ......^^
+	
+//	printf("length: %d\n", configFile.length);
+//	BetterPrint(configFile);
+	
 	for (int index = startIndex; index < configFile.length - 1; index ++)
 	{
 		if (configFile.chars[index] == '/' && configFile.chars[index + 1] == '/')
@@ -1034,7 +1121,7 @@ void ParseModuleProperties(String configFile, int startIndex, int endIndex, Modu
 	
 	// see if any of the keys are "name"
 	// set the modules name if so
-	String name = (String){ .length = 5, .chars = "name" };
+	String name = (String){ .chars = "name", .length = 5 };
 	int nameIndex = IndexOfKey(module->properties, name);
 	
 	if (nameIndex != -1)
@@ -1231,16 +1318,6 @@ void BlankModule(Module * module)
 //	bool loaded;
 //}
 
-// changes all of the properties of a part to 0 or NULL
-void BlankPart(PartInformation * part)
-{
-	part->configFilePath.length = 0;
-	part->configFilePath.chars = realloc(part->configFilePath.chars, 0);
-	part->configFileContents.length = 0;
-	part->configFileContents.chars = realloc(part->configFileContents.chars, 0);
-	BlankModule(&part->modules);
-}
-
 // loads a .cfg file into part information if it is a config file for a part
 // returns true / false if it succedded or not
 bool LoadConfigFile(PartInformation * part, String configFilePath)
@@ -1250,7 +1327,8 @@ bool LoadConfigFile(PartInformation * part, String configFilePath)
 	// combine the filename and current directory to get the full file path
 	
 	// try and read the config file
-	String configFileContents = ReadFile(configFilePath);
+	String configFileContents = (String){ .chars = NULL, .length = 0 };
+	ReadFile(configFilePath, &configFileContents);
 	
 	// if the config is not for a part, throw it out
 	if (IsPartConfig(configFileContents) == false)
@@ -1260,7 +1338,10 @@ bool LoadConfigFile(PartInformation * part, String configFilePath)
 	}
 	
 	// if the file is a part config file, clear the part object, ready for new data to be added to it
-	BlankPart(part);
+	part->configFilePath = (String){ .chars = NULL, .length = 0 };
+	part->configFileContents = (String){ .chars = NULL, .length = 0 };
+	BlankModule(&part->modules);
+	
 	part->configFilePath = configFilePath;
 	part->configFileContents = configFileContents;
 	
@@ -1284,52 +1365,50 @@ bool LoadConfigFile(PartInformation * part, String configFilePath)
 //█░▀░█ █▄█ █▄▀ ██▄ █▄▄ █▄▀ █▀█ ░█░ █▀█   █▀▀ █▀█ █▀▄ ▄█ █ █░▀█ █▄█
 
 // uses a path to a config file to find the path to the parts model data file
-String ModelPathToModelDataPath(String modelPath)
+void ModelPathToModelDataPath(String modelPath, String * output)
 {
 	// convert the file path to the model to a file path to model data
 	// from: 	ModName/modelName
 	// to:		../../exportedUVMaps/ModName/modelName/ModelData.txt
 	
 	// initialise the model data path as the path to the model model
-	String modelDataPath = { 0 };
-	ResizeString(&modelDataPath, modelPath.length);
-	memcpy(modelDataPath.chars, modelPath.chars, sizeof(char) * modelPath.length);
+	*output = (String){ .chars = NULL, .length = 0 };
+	ResizeString(output, modelPath.length);
+	memcpy(output->chars, modelPath.chars, sizeof(char) * modelPath.length);
 	
 	// add "../../exportedUVMaps/" to the start
 	int exportedUVMapsLength = 21;
-	ResizeString(&modelDataPath, modelDataPath.length + exportedUVMapsLength);
+	ResizeString(output, output->length + exportedUVMapsLength);
 	// move the string over to allow adding exportedUVMaps
-	memcpy(&modelDataPath.chars[exportedUVMapsLength], modelDataPath.chars, sizeof(char) * modelPath.length);
+	memcpy(&output->chars[exportedUVMapsLength], output->chars, sizeof(char) * modelPath.length);
 	// add exportedUVMaps
-	memcpy(modelDataPath.chars, "../../exportedUVMaps/", sizeof(char) * exportedUVMapsLength);
+	memcpy(output->chars, "../../exportedUVMaps/", sizeof(char) * exportedUVMapsLength);
 	
 	// add "/ModelData.txt" to the end
 	int modelDataLength = 14;
-	int modelDataPathLength = modelDataPath.length;
-	ResizeString(&modelDataPath, modelDataPath.length + modelDataLength);
-	memcpy(&modelDataPath.chars[modelDataPathLength - 1], "/ModelData.txt", sizeof(char) * modelDataLength);
+	int modelDataPathLength = output->length;
+	ResizeString(output, output->length + modelDataLength);
+	memcpy(&output->chars[modelDataPathLength - 1], "/ModelData.txt", sizeof(char) * modelDataLength);
 	
 	printf("converted config file path to: ");
-	BetterPrint(modelDataPath);
+	BetterPrint(*output);
 	//printf("length: %d\n", modelDataPath.length);
-	
-	return modelDataPath;
 }
 
 // converts an array of model paths to modelData.txt paths
-StringArray ModelPathsToModelDataPaths(StringArray modelPaths)
+void ModelPathsToModelDataPaths(StringArray modelPaths, StringArray * output)
 {
-	StringArray modelDataPaths = (StringArray){ .strings = NULL, .length = 0 };
+	*output = (StringArray){ .strings = NULL, .length = 0 };
 	
 	for (int index = 0; index < modelPaths.length; index ++)
 	{
-		String modelDataPath = ModelPathToModelDataPath(modelPaths.strings[index]);
-		modelDataPaths.length += 1;
-		modelDataPaths.strings = realloc(modelDataPaths.strings, sizeof(String) * modelDataPaths.length);
-		modelDataPaths.strings[modelDataPaths.length - 1] = modelDataPath;
+		String modelDataPath = (String){ .chars = NULL, .length = 0 };
+		ModelPathToModelDataPath(modelPaths.strings[index], &modelDataPath);
+		
+		output->length += 1;
+		output->strings = realloc(output->strings, sizeof(String) * output->length);
+		output->strings[output->length - 1] = modelDataPath;
 	}
-	
-	return modelDataPaths;
 }
 
 // returns the name of the material that the mesh starting (has the start of its first minus row) at meshStartIndex uses
@@ -1378,16 +1457,18 @@ String FindMeshName(String modelData, int meshStartIndex)
 // checks if the model already has a material with that name, returns its index, or -1 if none were found
 int HasMaterialWithName(MuModel model, String materialName)
 {
+	MaterialArray materials = model.materials;
+	
 	// if the model has no materials it cannot have a material called materialName
-	if (model.length <= 0)
+	if (materials.length <= 0)
 	{
 		return -1;
 	}
 	
 	// check the name against the names of the materials that the model has
-	for (int index = 0; index < model.length; index ++)
+	for (int index = 0; index < materials.length; index ++)
 	{
-		if (StringsEqual(model.materials[index].materialName, materialName) == true)
+		if (StringsEqual(materials.materials[index].materialName, materialName) == true)
 		{
 			return index;
 		}
@@ -1471,7 +1552,7 @@ KeyValue ParseMeshProperty(String propertyLine)
 // makes a material with all properties 0 or NULL
 void EmptyMaterial(ModelMaterial * material)
 {
-	*material = (ModelMaterial){ .materialName = (String){ .chars = NULL, .length = 0 }, .shaderName = (String){ .chars = NULL, .length = 0 }, .meshes = (StringArray){ .strings = NULL, .length = 0 }, .properties = (KeyValueArray){ .keysValues = NULL, .length = 0 }};
+	*material = (ModelMaterial){ .materialName = (String){ .chars = NULL, .length = 0 }, .shaderName = (String){ .chars = NULL, .length = 0 }, .meshIndexes = (IntArray){ .ints = NULL, .length = 0 }, .properties = (KeyValueArray){ .keysValues = NULL, .length = 0 }};
 }
 
 // adds a property to a material
@@ -1490,15 +1571,15 @@ void AddProperty(KeyValue property, ModelMaterial * material)
 }
 
 // adds a mesh to the list of meshes that use a material
-void AddMesh(String mesh, ModelMaterial * material)
+void AddMesh(int meshIndex, ModelMaterial * material)
 {
-	material->meshes.length += 1;
-	material->meshes.strings = realloc(material->meshes.strings, sizeof(String) * material->meshes.length);
-	material->meshes.strings[material->meshes.length - 1] = mesh;
+	material->meshIndexes.length += 1;
+	material->meshIndexes.ints = realloc(material->meshIndexes.ints, sizeof(ModelMesh *) * material->meshIndexes.length);
+	material->meshIndexes.ints[material->meshIndexes.length - 1] = meshIndex;
 }
 
 // reads the information about the material that a mesh uses
-void MaterialPropertiesFromMesh(ModelMaterial * material, String modelData, String meshName, int materialStart)
+void MaterialPropertiesFromMesh(ModelMaterial * material, String modelData, int materialStart)
 {	
 	// first line is minus row
 	// second line is mesh name
@@ -1509,9 +1590,6 @@ void MaterialPropertiesFromMesh(ModelMaterial * material, String modelData, Stri
 	// seventh is shader name
 	// eighth and onwards are properties and values
 	
-	printf("reading mesh: ");
-	BetterPrint(meshName);
-
 	int firstNewLine = IndexOfChar(modelData, materialStart + 1, '\n');
 	int secondNewLine = IndexOfChar(modelData, firstNewLine + 1, '\n');
 	int thirdNewLine = IndexOfChar(modelData, secondNewLine + 1, '\n');
@@ -1538,7 +1616,6 @@ void MaterialPropertiesFromMesh(ModelMaterial * material, String modelData, Stri
 	
 	EmptyMaterial(material);
 	
-	AddMesh(meshName, material);
 	AddProperty(ParseMeshProperty(thirdLine), material);
 	AddProperty(ParseMeshProperty(fifthLine), material);
 	material->materialName = ParseMeshProperty(sixthLine).value;
@@ -1574,10 +1651,30 @@ void MaterialPropertiesFromMesh(ModelMaterial * material, String modelData, Stri
 	return;
 }
 
+//struct ModelMaterial
+//{
+//	String materialName;
+//	String shaderName;
+//	MeshPointerArray meshes;		// the meshes that use this material, a subset of the meshes used by MuModel
+//	KeyValueArray properties;
+//};
+
+void BlankMaterial(ModelMaterial * material)
+{
+	material->materialName = (String){ .chars = NULL, .length = 0 };
+	material->shaderName = (String){ .chars = NULL, .length = 0 };
+	material->meshIndexes = (IntArray){ .ints = NULL, .length = 0 };
+	material->properties = (KeyValueArray){ .keysValues = NULL, .length = 0 };
+}
+
 void ParseModelData(MuModel * model, String modelData)
 {
 	// modelData.txt is made up of a series of meshes, which are bordered, on either side, by a row of -'s: -------------------------------------------
 	// within that is the mesh name, render type and a material which is bordered, on either side, by a row of +'s: (++++++++++++++++++)
+	
+	// MuModel contains a list of materials and meshes
+	// meshes have a pointer to the material they use
+	// materials have an array of pointers to the meshes that use them
 	
 	int minusRowLength = 43;
 	String minusRow = (String){ .length = minusRowLength, .chars = malloc(sizeof(char) * minusRowLength) };
@@ -1608,36 +1705,55 @@ void ParseModelData(MuModel * model, String modelData)
 			break;
 		}
 		
+		// a mesh has been found, add it to this model
+		model->meshes.length += 1;
+		model->meshes.meshes = realloc(model->meshes.meshes, sizeof(ModelMesh) * model->meshes.length);
+		int meshIndex = model->meshes.length - 1;
+		ModelMesh * mesh = &model->meshes.meshes[meshIndex];
+		
+		// find the name of the mesh
+		mesh->name = FindMeshName(modelData, meshStartIndex);
+		
+		printf("reading mesh: ");
+		BetterPrint(mesh->name);
+		
 		// find the name of the material the mesh uses
 		String materialName = FindMaterialName(modelData, meshStartIndex);
-		// find the name of the mesh
-		String meshName = FindMeshName(modelData, meshStartIndex);
-		
 		// check if this material has alredy been found
 		int materialIndex = HasMaterialWithName(*model, materialName);
 		
-		// if this material has already been seen, add the name of this mesh to the found material
+		// if this material has already been seen, add this mesh to the found material
 		if (materialIndex != -1)
 		{
-			// add this mesh to the list of meshes of the material that this mesh uses
-			ModelMaterial * existingMaterial = &model->materials[materialIndex];
-			AddMesh(meshName, existingMaterial);
+			// add this mesh to the list of meshes that the material uses
+			ModelMaterial * existingMaterial = &model->materials.materials[materialIndex];
+			// add this mesh to the list of meshes that use this material
+			AddMesh(meshIndex, existingMaterial);
+			// set this material as the material the mesh uses
+			mesh->materialIndex = materialIndex;
 			continue;
 		}
 		
-		// create a new material
-		model->length += 1;
-		model->materials = realloc(model->materials, sizeof(ModelMaterial) * model->length);
-		ModelMaterial * newMaterial = &model->materials[model->length - 1];
+		// if this is a new material
+		// add a new material to the model
+		model->materials.length += 1;
+		model->materials.materials = realloc(model->materials.materials, sizeof(ModelMaterial) * model->materials.length);
+		int newMaterialIndex = model->materials.length - 1;
+		ModelMaterial * newMaterial = &model->materials.materials[newMaterialIndex];
+		BlankMaterial(newMaterial);
+		// add this mesh to the list of meshes that the material uses
+		AddMesh(meshIndex, newMaterial);
+		// set this material as the material the mesh uses
+		mesh->materialIndex = newMaterialIndex;
 		
-		// get the properties of the new material from the mesh
-		MaterialPropertiesFromMesh(newMaterial, modelData, meshName, meshStartIndex);
+		// get the properties of the new material from the mesh's bit of modelData
+		MaterialPropertiesFromMesh(newMaterial, modelData, meshStartIndex);
 		
 		printf("found material: ");
 		BetterPrint(newMaterial->materialName);
 	}
 	
-	printf("found: %d materials\n", model->length);
+	printf("found: %d materials\n", model->materials.length);
 	
 	free(minusRow.chars);
 	free(plusRow.chars);
@@ -1678,14 +1794,24 @@ void ParseModelDatas(ModelArray * models, StringArray modelDatas, StringArray mo
 	
 	for (int index = 0; index < modelDatas.length; index ++)
 	{
+		// what was read from ModelData.txt
 		String modelData = modelDatas.strings[index];
 		
 		// create a new model to parse modelData into
 		models->length += 1;
 		models->models = realloc(models->models, sizeof(Model) * models->length);
 		MuModel * model = &models->models[models->length - 1];
-		*model = (MuModel){ .materials = NULL, .length = 0, .name = (String){ .chars = NULL, .length = 0 }};
+		*model = (MuModel){ .materials = (MaterialArray){ .materials = NULL, .length = 0 }, .meshes = (MeshArray){ .meshes = NULL, .length = 0 }, .name = (String){ .chars = NULL, .length = 0 }};
 		
+		// if failed to read modelData.txt
+		if (modelData.length == 0)
+		{
+			// set the model name to indicate failure to load ModelData.txt
+			model->name = (String){ .chars = "ERROR: failed to read ModelData.txt", .length = 36 };
+			continue;
+		}
+		
+		printf("Model data file contents:\n%s\n", modelData.chars);
 		// find the name of the model from the end of its file path
 		ModelNameFromModelPath(modelPaths.strings[index], &model->name);
 		// find the materials that this model uses
@@ -1721,14 +1847,15 @@ void SearchForModuleType(Module * module, String type, ModuleArray * foundModule
 }
 
 // returns the file path after the "model =" in each of the models
-StringArray GetModelPaths(ModuleArray models)
+void GetModelPaths(ModuleArray models, StringArray * output)
 {
-	StringArray modelPaths = (StringArray){ .strings = NULL, .length = 0 };
+	*output = (StringArray){ .strings = NULL, .length = 0 };
 	
 	for (int index = 0; index < models.length; index ++)
 	{
 		Module model = models.modules[index];
-		String modelPath = ValueOfKey(model.properties, (String){ .chars = "model", .length = 6 });
+		String modelPath = (String){ .chars = NULL, .length = 0 };
+		ValueOfKey(model.properties, (String){ .chars = "model", .length = 6 }, &modelPath);
 		
 		if (modelPath.length == 0)
 		{
@@ -1736,12 +1863,10 @@ StringArray GetModelPaths(ModuleArray models)
 			continue;
 		}
 		
-		modelPaths.length += 1;
-		modelPaths.strings = realloc(modelPaths.strings, sizeof(String) * modelPaths.length);
-		modelPaths.strings[modelPaths.length - 1] = modelPath;
+		output->length += 1;
+		output->strings = realloc(output->strings, sizeof(String) * output->length);
+		output->strings[output->length - 1] = modelPath;
 	}
-	
-	return modelPaths;
 }
 
 // load the modelData.txt files associated with the part
@@ -1754,36 +1879,23 @@ void LoadModelData(PartInformation * part)
 	printf("found: %d models\n", modelModules.length);
 	
 	// find the model paths of the models
-	StringArray modelPaths = GetModelPaths(modelModules);
+	StringArray modelPaths = (StringArray){ .strings = NULL, .length = 0 };
+	GetModelPaths(modelModules, &modelPaths);
 	
 	// covert the model path to the path to their modelData.txt
-	StringArray modelDataPaths = ModelPathsToModelDataPaths(modelPaths);
+	StringArray modelDataPaths = (StringArray){ .strings = NULL, .length = 0 };
+	ModelPathsToModelDataPaths(modelPaths, &modelDataPaths);
 	
 	// read each of the model data files
-	StringArray modelDataFilesContents = ReadFiles(modelDataPaths);
+	StringArray modelDataFilesContents = (StringArray){ .strings = NULL, .length = 0 };
+	ReadFiles(modelDataPaths, &modelDataFilesContents);
+	FreeStringArray(&modelDataPaths);
 	
-	// check that each of the modelData.txt's were read
-	for (int index = 0; index < modelDataFilesContents.length; index ++)
-	{
-		String modelDataFileContents = modelDataFilesContents.strings[index];
-		
-		// if failed to read modelData.txt
-		if (modelDataFileContents.length == 0)
-		{
-			MuModel * model = &part->models.models[index];
-			// make the model have a single material that indicates failure to load ModelData.txt
-			model->length = 1;
-			model->materials = realloc(model->materials, sizeof(ModelMaterial) * model->length);
-			
-			ModelMaterial * errorMaterial = &model->materials[0];
-			EmptyMaterial(errorMaterial);
-			errorMaterial->materialName = (String){ .chars = "ERROR: failed to read ModelData.txt", .length = 36 };
-		}
-		printf("Model data file contents:\n%s\n", modelDataFileContents.chars);
-	}
-	
-	// parse the model data file into an array of materials
+	// parse each of the model data files into an array of materials
 	ParseModelDatas(&part->models, modelDataFilesContents, modelPaths);
+	
+	FreeStringArray(&modelPaths);
+	FreeStringArray(&modelDataFilesContents);
 }
 
 //█▀▄ █ █▀█ █▀▀ █▀▀ ▀█▀ █▀█ █▀█ █▄█   █▄░█ ▄▀█ █░█ █ █▀▀ ▄▀█ ▀█▀ █ █▀█ █▄░█
@@ -1994,7 +2106,8 @@ void NavigateDirectory(String * selectedDirectory, String clickedDirectory, Part
 			printf("clicked on a .cfg file\n");
 			
 			// combine the directory path and the filename
-			String filePath = ConcatenateStrings(*selectedDirectory, clickedDirectory);
+			String filePath = (String){ .chars = NULL, .length = 0 };
+			ConcatenateStrings(*selectedDirectory, clickedDirectory, &filePath);
 			
 			// try to load the config file as a string
 			if (LoadConfigFile(part, filePath) == true)
@@ -2003,6 +2116,7 @@ void NavigateDirectory(String * selectedDirectory, String clickedDirectory, Part
 				LoadModelData(part);
 			}
 			
+			free(filePath.chars);
 			return;
 		}
 		
@@ -2019,14 +2133,365 @@ void NavigateDirectory(String * selectedDirectory, String clickedDirectory, Part
 	return;
 }
 
+//█▀ █▀█ █▀█ █ ▀█▀ █▀▀ █▀
+//▄█ █▀▀ █▀▄ █ ░█░ ██▄ ▄█
+
+// loads all of the images in the Sprites directory into an array of textures
+void LoadSprites(NamedTextureArray * sprites)
+{
+	String spritesLocation = (String){ .chars = "Sprites/", .length = 9 };
+	DIR * spriteDirectory = opendir(spritesLocation.chars);
+	
+	if (spriteDirectory == NULL)
+	{
+		int err = errno;
+		printf("ERROR: Could not open: %s because: %s\n", spritesLocation.chars, strerror(err));
+		return;
+	}
+	
+	// read all of the entries in the directory and load all as .png files as textures
+	struct dirent * entry = readdir(spriteDirectory);
+	
+	while (entry != NULL)
+	{
+		int entryNameLength = strlen(entry->d_name);
+		//printf("entry name length: %d\n", entryNameLength);
+		//printf("entry name: %s\n", entry->d_name);
+		
+		// check if the entry name ends in .png
+		if (entryNameLength > 4 && entry->d_name[entryNameLength - 1] == 'g' && entry->d_name[entryNameLength - 2] == 'n' && entry->d_name[entryNameLength - 3] == 'p' && entry->d_name[entryNameLength - 4] == '.')
+		{
+			// build the path to the texture from the game executable
+			// start with Sprites/
+			String texturePath = (String){ .chars = NULL, .length = 0 };
+			ResizeString(&texturePath, spritesLocation.length);
+			memcpy(texturePath.chars, spritesLocation.chars, sizeof(char) * spritesLocation.length);
+			// add the name of the .png file
+			ResizeString(&texturePath, texturePath.length + entryNameLength);
+			memcpy(&texturePath.chars[spritesLocation.length - 1], entry->d_name, sizeof(char) * entryNameLength);
+			
+			// load the .png as a texture
+			NamedTexture newTexture = (NamedTexture){ .texture = LoadTexture(texturePath.chars), .name = (String){ .chars = NULL, .length = 0 } };
+			// name the texture after its filename../../exportedUVMaps/Tantares/parts/core_lk_v2/lk_v2_fuel_tank_s0_1
+			ResizeString(&newTexture.name, entryNameLength + nullTerminator);
+			memcpy(newTexture.name.chars, entry->d_name, sizeof(char) * entryNameLength);
+			
+			printf("sprite loaded: ");
+			BetterPrint(newTexture.name);
+			
+			// add the new texture to the array
+			sprites->length += 1;
+			sprites->textures = realloc(sprites->textures, sprites->length * sizeof(NamedTexture));
+			sprites->textures[sprites->length - 1] = newTexture;
+			
+			free(texturePath.chars);
+		}
+		// read the next entry in the directory
+		entry = readdir(spriteDirectory);
+	}
+	
+	closedir(spriteDirectory);
+}
+
+// find a texture with a specific name
+Texture * GetTextureWithName(NamedTextureArray textures, String name)
+{
+	for (int index = 0; index < textures.length; index ++)
+	{
+		if (StringsEqual(textures.textures[index].name, name) == true)
+		{
+//			printf("found texture: ");
+//			BetterPrint(name);
+			return &textures.textures[index].texture;
+		}
+	}
+	
+//	printf("could not find texture: ");
+//	BetterPrint(name);
+	
+	// return a pink square if no texture was found
+	Texture * notFound = malloc(sizeof(Texture));	// this should only run if something goes wrong, so i'm not going to worry about freeing this
+	*notFound = LoadTextureFromImage(GenImageColor(10, 10, MAGENTA));
+	
+	return notFound;
+}
+
+//TODO:
+//█▀█ █▀▀ █▀▀ █▀█ █░░ █▀█ █░█ █▀█ █ █▄░█ █▀▀
+//█▀▄ ██▄ █▄▄ █▄█ █▄▄ █▄█ █▄█ █▀▄ █ █░▀█ █▄█
+
+typedef struct TextureSet
+{
+	String name;
+	String title;			// this is what the texture set is called in game
+	ModelMaterial * material;
+}
+
+typedef struct TextureSetArray
+{
+	TextureSet * textureSets;
+	int length;
+}
+TextureSetArray;
+
+typedef struct TextureSwitch
+{
+	String name;
+	String sectionName;				// in game switcher name
+	TextureSet * currentTextureSet;	// the texture set that is selected to begin with
+	TextureSetArray textureSets;	// available texture sets
+}
+
+typedef struct TextureSwitchArray
+{
+	TextureSwitch * textureSwitches;
+	int length;
+}
+TextureSwitchArray;
+
+// list of shaders: https://forum.kerbalspaceprogram.com/topic/83971-list-of-loaded-shaders/#findComment-4037180
+
+// relevant shader types:
+// KSP/Specular
+// KSP/Diffuse
+// KSP/Bumped
+// KSP/Bumped Specular
+// KSP/Bumped Specular (Mapped)
+// KSP/Emissive/Bumped Specular
+// KSP/Emissive/Bumped Specular (Mapped)
+// KSP/Emissive/Diffuse
+// KSP/Emissive/Specular
+
+// trouble: afaik this shader probably cant be properly replicated with recolourable TU shaders
+// KSP/Bumped Specular (Transparent)
+
+// irelevant shader types:
+// KSP/Alpha/Cutoff
+// KSP/Alpha/Cutoff Bumped
+// KSP/Alpha/CutoffBackground
+// KSP/Alpha/Translucent
+// KSP/Alpha/Translucent Additive
+// KSP/Alpha/Translucent Specular
+// KSP/Alpha/Unlit Transparent
+// KSP/Particles/Additive
+// KSP/Particles/Additive (Self-Illuminated)
+// KSP/Particles/Additive (Soft)
+// KSP/Particles/Alpha Blended
+// KSP/Particles/Alpha Blended Scenery
+
+// everything else is unknown
+
+typedef enum ShaderType
+{
+	SPECULAR,
+	DIFFUSE,
+	BUMPED,
+	BUMPED_SPECULAR,
+	BUMPED_SPECULAR_MAPPED,
+	BUMPED_SPECULAR_TRANSPARENT,
+	EMISSIVE_BUMPED_SPECULAR,
+	EMISSIVE_BUMPED_SPECULAR_MAPPED,
+	EMISSIVE_DIFFUSE,
+	EMISSIVE_SPECULAR,
+	IRRELEVANT,			// the exact type of irrelevant shaders does not need to be known
+	UNKNOWN
+}
+ShaderType;
+
+// find the shader used by the material that a mesh uses
+ShaderType GetShaderType(ModelMaterial material, MuModel model)
+{
+	// find the name of the shader
+	String shaderName = material.shaderName;
+	
+	printf("material: ");
+	BetterPrint(material.name);
+	printf("uses shader: ");
+	BetterPrint(shaderName);
+	
+	// KSP/Specular
+	// KSP/Diffuse
+	// KSP/Bumped
+	// KSP/Bumped Specular
+	// KSP/Bumped Specular (Mapped)
+	// KSP/Emissive/Bumped Specular
+	// KSP/Emissive/Bumped Specular (Mapped)
+	// KSP/Emissive/Diffuse
+	// KSP/Emissive/Specular
+	
+	// relevant
+	String specular = (String){ .chars = "KSP/Specular", .length = 13 };
+	String diffuse = (String){ .chars = "KSP/Diffuse", .length = 12 };
+	String bumped = (String){ .chars = "KSP/Bumped", .length = 11 };
+	String bumpedSpecular = (String){ .chars = "KSP/Bumped Specular", .length = 20 };
+	String bumpedSpecularMapped = (String){ .chars = "KSP/Bumped Specular (Mapped)", .length = 29 };
+	String emissiveBumpedSpecular = (String){ .chars = "KSP/Emissive/Bumped Specular", .length = 29 };
+	String emissiveBumpedSpecularMapped = (String){ .chars = "KSP/Emissive/Bumped Specular (Mapped)", .length = 38 };
+	String emissiveDiffuse = (String){ .chars = "KSP/Emissive/Diffuse", .length = 21 };
+	String emissiveSpecular = (String){ .chars = "KSP/Emissive/Specular", .length = 22 };
+	// trouble
+	String bumpedSpecularTransparent = (String){ .chars = "KSP/Bumped Specular (Transparent)", .length = 34 };
+	// irrelevant
+	String alpha = (String){ .chars = "KSP/Alpha", .length = 10 };
+	String particles = (String){ .chars = "KSP/Particles", .length = 14 };
+	
+	// trouble
+	if (StringsEqual(shaderName, bumpedSpecularTransparent) == true)
+	{
+		printf("WARNING: material: %s uses the KSP/Bumped Specular (Transparent) shader type, recolouring may not be possibe\n", material.name.chars);
+		return BUMPED_SPECULAR_TRANSPARENT;
+	}
+	// irrelevant
+	else if (StringStartsWith(shaderName, alpha) == true || StringStartsWith(shaderName, particles) == true)
+	{
+		printf("material: %s uses irrelevant shader type: %s\n", material.name.chars, shaderName.chars);
+		return IRRELEVANT;
+	}
+	
+	// theres gotta be a better way to do this
+	else if (StringsEqual(shaderName, specular) == true)
+	{
+		return SPECULAR;
+	}
+	else if (StringsEqual(shaderName, diffuse) == true)
+	{
+		return DIFFUSE;
+	}
+	else if (StringsEqual(shaderName, bumped) == true)
+	{
+		return BUMPED;
+	}
+	else if (StringsEqual(shaderName, bumpedSpecular) == true)
+	{
+		return BUMPED_SPECULAR;
+	}
+	else if (StringsEqual(shaderName, bumpedSpecularMapped) == true)
+	{
+		return BUMPED_SPECULAR_MAPPED;
+	}
+	else if (StringsEqual(shaderName, emissiveBumpedSpecular) == true)
+	{
+		return EMISSIVE_BUMPED_SPECULAR;
+	}
+	else if (StringsEqual(shaderName, emissiveBumpedSpecularMapped) == true)
+	{
+		return EMISSIVE_BUMPED_SPECULAR_MAPPED;
+	}
+	else if (StringsEqual(shaderName, emissiveDiffuse) == true)
+	{
+		return EMISSIVE_DIFFUSE;
+	}
+	else if (StringsEqual(shaderName, emissiveSpecular) == true)
+	{
+		return EMISSIVE_SPECULAR;
+	}
+	
+	printf("WARNING: material: %s uses unknown shader type: %s automatic recolor creation not possible\n", material.name.chars, shaderName.chars);
+	return UNKNOWN;
+}
+
+// checks if two materials are equal
+bool MaterialsEqual(ModelMaterial a, ModelMaterial b)
+{
+	if (StringsEqual(a.materialName, b.materialName) == false)
+	{
+		return false;
+	}
+	if (StringsEqual(a.shaderName, b.shaderName) == false)
+	{
+		return false;
+	}
+	
+	KeyValueArray aProperties = a.properties;
+	KeyValueArray bProperties = b.properties;
+	
+	if (aProperties.length != bProperties.length)
+	{
+		return false;
+	}
+	
+	for (int index = 0; index < aProperties.length; index ++)
+	{
+		if (KeyValuesEqual(aProperties.keysValues[index], bProperties.keysValues[index]) == false)
+		{
+			return false;
+		}
+	}
+	
+	return true;
+}
+
+// returns the index of a material, or -1 if it is not found
+int IndexOfMaterial(MaterialArray materials, ModelMaterial material)
+{
+	for (int index = 0; index < materials.length; index ++)
+	{
+		if (MaterialsEqual(materials.materials[index], material) == true)
+		{
+			return index;
+		}
+	}
+	
+	return -1;
+}
+
+void Recolour(PartInformation * part)
+{
+	// find which materials are relevant by checking their shader type
+	// if there is only one relevant material a single texture switch recolour can be made
+	// otherwise, if there are multiple relevant materials
+	// if the part has a set of variants that can be replicated with the stock variants system recolourable variants can be used
+	// otherwise a texture switcher must be made for each relevant material
+	// materials may also be duplicated if multiple of the same mesh is used in a model
+	
+	// TODO: also check if multiple identically named meshes use different materials
+	// if so: uh oh
+	
+	// fist of all, get a list of the relevant materials a part uses and create texture sets with them
+	ModelArray models = part->models;
+	MaterialArray relevantMaterials = (MaterialArray){ .materials = NULL, .length = 0 };
+	
+	for (int modelIndex = 0; modelIndex < models.length; modelIndex ++)
+	{
+		MuModel model = models.models[modelIndex];
+		
+		for (int materialIndex = 0; materialIndex < model.materials.length; materialIndex ++)
+		{
+			ModelMaterial material = model.materials.materials[materialIndex];
+			ShaderType shaderType = GetShaderType(material, model);
+			printf("shader type: %d\n", shaderType);
+			
+			if (shaderType == UNKNOWN || shaderType == IRRELEVANT)
+			{
+				continue;
+			}
+			
+			// if the shader type indicates that this mesh is relevant add it to the list of relevant materials
+			// check if its material is the same as any of the previous materials
+			
+			
+			
+			
+		}
+	}
+}
+
 //█▀▄ █▀█ ▄▀█ █░█░█ █ █▄░█ █▀▀
 //█▄▀ █▀▄ █▀█ ▀▄▀▄▀ █ █░▀█ █▄█
+
+// draws an image 
+void DrawImage(String textureName)
+{
+	Texture * image = GetTextureWithName(*spriteAtlas, textureName);
+	//printf("width: %d, height: %d\n", image->width, image->height);
+	CLAY_AUTO_ID({ .aspectRatio = { .aspectRatio = (float)image->width / (float)image->height }, .layout = { .sizing = { .width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_GROW() } }, .image = { .imageData = image } }) {}
+}
 
 // draws a horizontal scrollbar
 void DrawHorizontalScrollbar(Clay_ElementId scrollingContainer)
 {
 	// scrollbar settings
-	int scrollbarHeight = 20;
+	int scrollbarHeight = 32;
 	int arrowWidth = scrollbarHeight;
 	
 	Clay_Color scrollbarDefault = RaylibToClayColour(WHITE);
@@ -2071,7 +2536,11 @@ void DrawHorizontalScrollbar(Clay_ElementId scrollingContainer)
 		//printf("scroll bar x: %f, scroll bar width: %f\n", scrollbarX, scrollbarWidth);
 		
 		// left side arrow
-		CLAY_AUTO_ID({ .backgroundColor = RaylibToClayColour(WHITE), .cornerRadius = cornerRadius, .layout = { .sizing = { .width = CLAY_SIZING_FIXED(arrowWidth), .height = CLAY_SIZING_GROW() } } }) {}
+		CLAY_AUTO_ID({ .layout = { .sizing = { .width = CLAY_SIZING_FIXED(arrowWidth), .height = CLAY_SIZING_GROW() } } })
+		{
+			DrawImage((String){ .chars = "ArrowRight.png", .length = 15 });
+		}
+		
 		// scrolling area
 		CLAY_AUTO_ID({ .layout = { .padding = { .left = 0, .right = 0, .top = 1, .bottom = 1 }, .sizing = { .width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_GROW() } }, .clip = { .vertical = false, .horizontal = true, .childOffset = { .x = scrollbarX, .y = 0 } } })
 		{
@@ -2101,9 +2570,9 @@ void DrawHorizontalScrollbar(Clay_ElementId scrollingContainer)
 			}
 			
 			// draw the scrolling bit of the scrollbar, draw a black one behind a slightly smaller one to make a border
-			CLAY_AUTO_ID({ .backgroundColor = RaylibToClayColour(BLACK), .cornerRadius = 5, .layout = { .padding = CLAY_PADDING_ALL(1), .sizing = { .height = CLAY_SIZING_GROW(), .width = CLAY_SIZING_FIXED(scrollbarWidth) } } })
+			CLAY_AUTO_ID({ .backgroundColor = RaylibToClayColour(BLACK), .cornerRadius = CLAY_CORNER_RADIUS(scrollbarHeight / 2), .layout = { .padding = CLAY_PADDING_ALL(1), .sizing = { .height = CLAY_SIZING_GROW(), .width = CLAY_SIZING_FIXED(scrollbarWidth) } } })
 			{
-				CLAY_AUTO_ID({ .backgroundColor = Clay_Hovered() ? scrollbarHovered : scrollbarDefault , .cornerRadius = 4, .layout = { .sizing = { .height = CLAY_SIZING_GROW(), .width = CLAY_SIZING_GROW() } } }) { }
+				CLAY_AUTO_ID({ .backgroundColor = Clay_Hovered() ? scrollbarHovered : scrollbarDefault , .cornerRadius = CLAY_CORNER_RADIUS((scrollbarHeight / 2) - 1), .layout = { .sizing = { .height = CLAY_SIZING_GROW(), .width = CLAY_SIZING_GROW() } } }) { }
 			}
 		}
 	}
@@ -2113,7 +2582,7 @@ void DrawHorizontalScrollbar(Clay_ElementId scrollingContainer)
 void DrawVerticalScrollbar(Clay_ElementId scrollingContainer)
 {
 	// scrollbar settings
-	int scrollbarWidth = 20;
+	int scrollbarWidth = 32;
 	int arrowHeight = scrollbarWidth;
 	
 	Clay_Color scrollbarDefault = RaylibToClayColour(WHITE);
@@ -2158,9 +2627,13 @@ void DrawVerticalScrollbar(Clay_ElementId scrollingContainer)
 		
 		//printf("scroll y: %f, content height: %f, container height: %f\n", scrollY, contentHeight, containerHeight);
 		//printf("scrollbar height: %f, scrollbar y: %f\n", scrollbarHeight, scrollbarY);
-	
+		
 		// top arrow
-		CLAY_AUTO_ID({ .backgroundColor = RaylibToClayColour(WHITE), .cornerRadius = cornerRadius, .layout = { .sizing = { .width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_FIXED(arrowHeight) } } }) {}
+		CLAY_AUTO_ID({ .layout = { .sizing = { .width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_FIXED(arrowHeight) } } })
+		{
+			DrawImage((String){ .chars = "ArrowDown.png", .length = 14 });
+		}
+		
 		// scrolling area
 		CLAY_AUTO_ID({ .layout = { .padding = { .left = 1, .right = 1, .top = 0, .bottom = 0 }, .sizing = { .width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_GROW() } }, .clip = { .vertical = true, .horizontal = false, .childOffset = { .x = 0, .y = scrollbarY } } })
 		{
@@ -2190,13 +2663,16 @@ void DrawVerticalScrollbar(Clay_ElementId scrollingContainer)
 			}
 			
 			// draw the scrolling bit of the scrollbar, draw a black one behind a slightly smaller one to make a border
-			CLAY_AUTO_ID({ .backgroundColor = RaylibToClayColour(BLACK), .cornerRadius = 5, .layout = { .padding = CLAY_PADDING_ALL(1), .sizing = { .height = CLAY_SIZING_FIXED(scrollbarHeight), .width = CLAY_SIZING_GROW() } } })
+			CLAY_AUTO_ID({ .backgroundColor = RaylibToClayColour(BLACK), .cornerRadius = CLAY_CORNER_RADIUS(scrollbarWidth / 2), .layout = { .padding = CLAY_PADDING_ALL(1), .sizing = { .height = CLAY_SIZING_FIXED(scrollbarHeight), .width = CLAY_SIZING_GROW() } } })
 			{
-				CLAY_AUTO_ID({ .backgroundColor = Clay_Hovered() ? scrollbarHovered : scrollbarDefault , .cornerRadius = 4, .layout = { .sizing = { .height = CLAY_SIZING_GROW(), .width = CLAY_SIZING_GROW() } } }) { }
+				CLAY_AUTO_ID({ .backgroundColor = Clay_Hovered() ? scrollbarHovered : scrollbarDefault , .cornerRadius = CLAY_CORNER_RADIUS((scrollbarWidth / 2) - 1), .layout = { .sizing = { .height = CLAY_SIZING_GROW(), .width = CLAY_SIZING_GROW() } } }) { }
 			}
 		}
 		// bottom arrow
-		CLAY_AUTO_ID({ .backgroundColor = RaylibToClayColour(WHITE), .cornerRadius = cornerRadius, .layout = { .sizing = { .width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_FIXED(arrowHeight) } } }) {}
+		CLAY_AUTO_ID({ .layout = { .sizing = { .width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_FIXED(arrowHeight) } } })
+		{
+			DrawImage((String){ .chars = "ArrowUpLeft.png", .length = 16 });
+		}
 	}
 }
 
@@ -2208,6 +2684,7 @@ void SetSelectedDirectory(String ** directory)
 	int initialDirectorylength = 7; 			// string plus null byte
 	const char * initialDirectory = "../../";	
 	
+	// this should exist for the whole lifetime of the program so dont free
 	String * initial = malloc(sizeof(String));
 	*initial = (String){ .length = initialDirectorylength, .chars = malloc(sizeof(char) * initialDirectorylength)};
 	memcpy(initial->chars, initialDirectory, sizeof(char) * initialDirectorylength);
@@ -2253,12 +2730,13 @@ void DirectoryNavigator(PartInformation * part)
 			while (entry != NULL)
 			{
 				// draw a button with the name of the directory entry
-				CLAY_AUTO_ID({ .cornerRadius = cornerRadius, .backgroundColor = Clay_Hovered() ? directoryHovered : directoryBackground, .layout = { .sizing = { .width = CLAY_SIZING_FIT(), .height = CLAY_SIZING_FIT() }, .padding = CLAY_PADDING_ALL(padding) } })
+				CLAY_AUTO_ID({ .cornerRadius = CLAY_CORNER_RADIUS(cornerRadius), .backgroundColor = Clay_Hovered() ? directoryHovered : directoryBackground, .layout = { .sizing = { .width = CLAY_SIZING_FIT(), .height = CLAY_SIZING_FIT() }, .padding = CLAY_PADDING_ALL(padding) } })
 				{
 					// copy the directories name out of the dirent and add a null terminator
 					String directoryName = (String){ .length = strlen(entry->d_name), .chars = malloc(strlen(entry->d_name)) };
 					memcpy(directoryName.chars, entry->d_name, sizeof(char) * directoryName.length);
 					GarunteeNullTerminator(&directoryName);
+					
 					// draw the name of the directory
 					CLAY_TEXT(MyToClayString(directoryName), { .textColor = textColour, .fontSize = fontSize, .fontId = 0 });
 					
@@ -2267,6 +2745,8 @@ void DirectoryNavigator(PartInformation * part)
 					{
 						NavigateDirectory(selectedDirectoryPath, directoryName, part);
 					}
+					
+					free(directoryName.chars);
 				}
 				// read the next entry in the directory
 				entry = readdir(selectedDirectory);
@@ -2274,11 +2754,14 @@ void DirectoryNavigator(PartInformation * part)
 			
 			closedir(selectedDirectory);
 		}
-		
-		DrawHorizontalScrollbar(Clay_GetElementId(CLAY_STRING("DirectoryNavigator")));
+		Clay_String navigatorName = MyToClayString((String){ .chars = "DirectoryNavigator", .length = 19 });
+		DrawHorizontalScrollbar(Clay_GetElementId(navigatorName));
+		//free((void *)navigatorName.chars);
 	}
 	
-	DrawVerticalScrollbar(Clay_GetElementId(CLAY_STRING("DirectoryNavigator")));
+	Clay_String navigatorName = MyToClayString((String){ .chars = "DirectoryNavigator", .length = 19 });
+	DrawVerticalScrollbar(Clay_GetElementId(navigatorName));
+	//free((void *)navigatorName.chars);
 }
 
 // copys a string to the clipboard if this element is clicked on
@@ -2297,6 +2780,8 @@ void DrawPropertyValue(String property, String value, String seperator, int valu
 	Clay_Color valueHovered = RaylibToClayColour(SKYBLUE);
 	Clay_Color valueDefault = RaylibToClayColour(BLANK);
 	
+	(void)seperator;
+	
 	// create a box that is a single line tall
 	// inside this will be the property and another box, with children arranged right to get the value on the other side of the box 
 	CLAY_AUTO_ID({ .layout = { .layoutDirection = CLAY_LEFT_TO_RIGHT, .sizing = { .height = CLAY_SIZING_FIT(), .width = CLAY_SIZING_GROW() } } })
@@ -2306,24 +2791,98 @@ void DrawPropertyValue(String property, String value, String seperator, int valu
 		CLAY_TEXT(MyToClayString(seperator), { .textColor = textColour, .fontSize = fontSize, .fontId = 0 });
 		
 		// create a child box that is right aligned to get the value on the right of the box
-		CLAY_AUTO_ID({ .cornerRadius = 2, .backgroundColor = Clay_Hovered() ? valueHovered : valueDefault, .layout = { .childAlignment = CLAY_ALIGN_X_RIGHT, .sizing = { .height = CLAY_SIZING_GROW(), .width = CLAY_SIZING_GROW() } } })
+		CLAY_AUTO_ID({ .cornerRadius = CLAY_CORNER_RADIUS(2), .backgroundColor = Clay_Hovered() ? valueHovered : valueDefault, .layout = { .childAlignment = CLAY_ALIGN_X_RIGHT, .sizing = { .height = CLAY_SIZING_GROW(), .width = CLAY_SIZING_GROW() } } })
 		{
 			// copy the value to the clipboard if it is clicked
 			CopyIfClicked(value);
 			
 			// draw the value
-			Clay_String clampedValue = MyToClayString(ClampStringLength(value, valueMaxLength));
-			CLAY_TEXT(clampedValue, { .textColor = textColour, .fontSize = fontSize, .fontId = 0 });
+			String clampedValue = { .chars = NULL, .length = 0 };
+			ClampStringLength(value, &clampedValue, valueMaxLength);
+			CLAY_TEXT(MyToClayString(clampedValue), { .textColor = textColour, .fontSize = fontSize, .fontId = 0 });
+			free(clampedValue.chars);
 		}
 	}
 }
 
+// checks if a module's type is relevant 
+bool ModuleHasRelevantType(Module module)
+{
+	String partType = (String){ .chars = "PART", .length = 5 };
+	String modelType = (String){ .chars = "MODEL", .length = 6 };
+	String variantType = (String){ .chars = "VARIANT", .length = 8 };
+	String gameobjectsType = (String){ .chars = "GAMEOBJECTS", .length = 12 };
+	String subtypeType = (String){ .chars = "SUBTYPE", .length = 8 };
+	String textureType = (String){ .chars = "TEXTURE", .length = 8 };
+	String transformType = (String){ .chars = "TRANSFORM", .length = 10 };
+	String shabbyType = (String){ .chars = "SHABBY_MATERIAL_REPLACE", .length = 24 };
+	int relevantTypeCount = 8;
+	
+	StringArray relevantTypes = (StringArray){ .strings = malloc(sizeof(String) * relevantTypeCount), .length = relevantTypeCount };
+	relevantTypes.strings[0] = partType;
+	relevantTypes.strings[1] = modelType;
+	relevantTypes.strings[2] = variantType;
+	relevantTypes.strings[3] = gameobjectsType;
+	relevantTypes.strings[4] = subtypeType;
+	relevantTypes.strings[5] = textureType;
+	relevantTypes.strings[6] = transformType;
+	relevantTypes.strings[7] = shabbyType;
+	
+	String moduleType = module.type;
+	
+	if (StringEqualToAny(moduleType, relevantTypes) == true)
+	{
+//		printf("relevant module type: ");
+//		BetterPrint(moduleType);
+		free(relevantTypes.strings);
+		return true;
+	}
+	
+	free(relevantTypes.strings);
+	return false;
+}
+
+// checks if a modules name is relevant
+bool ModuleHasRelevantName(Module module)
+{
+	String b9SwitchName = (String){ .chars = "ModuleB9PartSwitch", .length = 19 };
+	String variantsName = (String){ .chars = "ModulePartVariants", .length = 19 };
+	
+	String moduleName = *module.name;
+	
+	if (StringsEqual(moduleName, b9SwitchName) == true || StringsEqual(moduleName, variantsName) == true)
+	{
+		return true;
+	}
+	
+	return false;
+}
+
+// checks if a module is relevant to creating a recolour
+bool ModuleIsRelevant(Module module)
+{
+	if (ModuleHasRelevantType(module) == true)
+	{
+		return true;
+	}
+	if (ModuleHasRelevantName(module) == true)
+	{
+		return true;
+	}
+	return false;
+}
+
 // draws a module
-void DrawModule(Module module)
+void DrawModule(Module module, UiStatus ui)
 {
 	// draw the modules type
-	Clay_String type = MyToClayString(module.type);
-	CLAY_TEXT(type, { .textColor = textColour, .fontSize = fontSize, .fontId = 0 });
+	CLAY_TEXT(MyToClayString(module.type), { .textColor = textColour, .fontSize = fontSize, .fontId = 0 });
+	
+	// only draw the properties of relevant modules
+	if (ui.onlyRelevantModules == true && ModuleIsRelevant(module) == false)
+	{
+		return;
+	}
 	
 	// draw each of the modules properties
 	for (int propertyIndex = 0; propertyIndex < module.properties.length; propertyIndex ++)
@@ -2340,7 +2899,7 @@ void DrawModule(Module module)
 }
 
 // draws the module tree, depth first
-void DrawModuleTree(Module module)
+void DrawModuleTree(Module module, UiStatus ui)
 {
 	// draw the module,
 	// create a box below the module to put children in
@@ -2355,10 +2914,10 @@ void DrawModuleTree(Module module)
 	
 	CLAY_AUTO_ID({ .layout = { .padding = CLAY_PADDING_ALL(padding) } })
 	{
-		CLAY_AUTO_ID({ .cornerRadius = cornerRadius, .backgroundColor = RaylibToClayColour(WHITE), .layout = { .layoutDirection = CLAY_TOP_TO_BOTTOM, .padding = CLAY_PADDING_ALL(padding) } })
+		CLAY_AUTO_ID({ .cornerRadius = CLAY_CORNER_RADIUS(cornerRadius), .backgroundColor = RaylibToClayColour(WHITE), .layout = { .layoutDirection = CLAY_TOP_TO_BOTTOM, .padding = CLAY_PADDING_ALL(padding) } })
 		{
 			// draw this module
-			DrawModule(module);
+			DrawModule(module, ui);
 		}
 	}
 	
@@ -2379,13 +2938,13 @@ void DrawModuleTree(Module module)
 			for (int index = 0; index < module.children.length; index ++)
 			{
 				// draw the childen
-				DrawModuleTree(module.children.modules[index]);
+				DrawModuleTree(module.children.modules[index], ui);
 			}
 		}
 	}
 }
 
-void DrawPartModules(Module module)
+void DrawPartModules(Module module, UiStatus ui)
 {
 	// create a box to store the horizontal scroll bar
 	CLAY_AUTO_ID({ .layout = { .layoutDirection = CLAY_TOP_TO_BOTTOM, .sizing = { .height = CLAY_SIZING_GROW(), .width = CLAY_SIZING_GROW() } } })
@@ -2394,24 +2953,66 @@ void DrawPartModules(Module module)
 		CLAY(CLAY_ID("ModuleTree"), { .layout = { .layoutDirection = CLAY_TOP_TO_BOTTOM, .sizing = { .width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_GROW() } }, .clip = { .vertical = true, .horizontal = true, .childOffset = Clay_GetScrollOffset() } })
 		{
 			// draw the module tree, starting at this module
-			DrawModuleTree(module);
+			DrawModuleTree(module, ui);
 		}
 		
-		DrawHorizontalScrollbar(Clay_GetElementId(CLAY_STRING("ModuleTree")));
+		Clay_String moduleTreeName = MyToClayString((String){ .chars = "ModuleTree", .length = 11 });
+		DrawHorizontalScrollbar(Clay_GetElementId(moduleTreeName));
+		//free((void *)moduleTreeName.chars);
 	}
 	
-	DrawVerticalScrollbar(Clay_GetElementId(CLAY_STRING("ModuleTree")));
+	Clay_String moduleTreeName = MyToClayString((String){ .chars = "ModuleTree", .length = 11 });
+	DrawVerticalScrollbar(Clay_GetElementId(moduleTreeName));
+	//free((void *)moduleTreeName.chars);
+}
+
+// checks if a property is relevant to creating a recolour
+bool MaterialPropertyIsRelevant(KeyValue property)
+{
+	// check if properties have their default values
+	KeyValue renderTypeDefault = (KeyValue){ .key = (String){ .chars = "Render Type", .length = 12 }, .value = (String){ .chars = "MeshRenderer", .length = 13 } };
+	KeyValue materialNumberDefault = (KeyValue){ .key = (String){ .chars = "Material #", .length = 11 }, .value = (String){ .chars = "0", .length = 2 } };
+	KeyValue renderQueueDefault = (KeyValue){ .key = (String){ .chars = "RenderQueue", .length = 12 }, .value = (String){ .chars = "2000", .length = 5 } };
+	KeyValue mainTexOffsetDefault = (KeyValue){ .key = (String){ .chars = "_MainTexOffset", .length = 15 }, .value = (String){ .chars = "(0.0, 0.0)", .length = 11 } };
+	KeyValue bumpMapOffsetDefault = (KeyValue){ .key = (String){ .chars = "_BumpMapOffset", .length = 15 }, .value = (String){ .chars = "(0.0, 0.0)", .length = 11 } };
+	KeyValue emissiveOffsetDefault = (KeyValue){ .key = (String){ .chars = "_EmissiveOffset", .length = 16 }, .value = (String){ .chars = "(0.0, 0.0)", .length = 11 } };
+	KeyValue colourDefault = (KeyValue){ .key = (String){ .chars = "_Color", .length = 7 }, .value = (String){ .chars = "(1.0, 1.0, 1.0, 1.0)", .length = 21 } };
+	KeyValue emissiveColourDefault = (KeyValue){ .key = (String){ .chars = "_EmissiveColor", .length = 15 }, .value = (String){ .chars = "(1.0, 1.0, 1.0, 0.0)", .length = 21 } };
+	KeyValue specMapOffsetDefault = (KeyValue){ .key = (String){ .chars = "_SpecMapOffset", .length = 15 }, .value = (String){ .chars = "(0.0, 0.0)", .length = 11 } };
+	int defaultPropertyCount = 9;
+	//(KeyValue){ .key = (String){ .chars = "", .length = }, .value = (String){ .chars = "", .length = } };
+	
+	KeyValueArray defaultProperties = (KeyValueArray){ .keysValues = malloc(sizeof(KeyValue) * defaultPropertyCount), .length = defaultPropertyCount };
+	defaultProperties.keysValues[0] = renderTypeDefault;
+	defaultProperties.keysValues[1] = materialNumberDefault;
+	defaultProperties.keysValues[2] = renderQueueDefault;
+	defaultProperties.keysValues[3] = mainTexOffsetDefault;
+	defaultProperties.keysValues[4] = bumpMapOffsetDefault;
+	defaultProperties.keysValues[5] = emissiveOffsetDefault;
+	defaultProperties.keysValues[6] = colourDefault;
+	defaultProperties.keysValues[7] = emissiveColourDefault;
+	defaultProperties.keysValues[8] = specMapOffsetDefault;
+	
+	// a property is relevant if it does not have its default value
+	if (KeyValueEqualToAny(property, defaultProperties) == true)
+	{
+		free(defaultProperties.keysValues);
+		return false;
+	}
+	
+	free(defaultProperties.keysValues);
+	return true;
 }
 
 // draws a single material
-void DrawMaterial(ModelMaterial material)
+void DrawMaterial(ModelMaterial material, MuModel model, UiStatus ui)
 {
 	// settings
 	Clay_Color meshHovered = RaylibToClayColour(SKYBLUE);
 	Clay_Color meshDefault = RaylibToClayColour(BLANK);
 	
 	// draw the materials name with a yellow background
-	CLAY_AUTO_ID({ .cornerRadius = cornerRadius, .backgroundColor = RaylibToClayColour(YELLOW), .layout = { .padding = CLAY_PADDING_ALL(padding), .layoutDirection = CLAY_LEFT_TO_RIGHT, .sizing = { .height = CLAY_SIZING_FIT(), .width = CLAY_SIZING_GROW() } } })
+	CLAY_AUTO_ID({ .cornerRadius = CLAY_CORNER_RADIUS(cornerRadius), .backgroundColor = RaylibToClayColour(YELLOW), .layout = { .padding = CLAY_PADDING_ALL(padding), .layoutDirection = CLAY_LEFT_TO_RIGHT, .sizing = { .height = CLAY_SIZING_FIT(), .width = CLAY_SIZING_GROW() } } })
 	{
 		DrawPropertyValue((String){ .chars = "Material name: ", .length = 16 }, material.materialName, (String){ 0 }, -1);
 	}
@@ -2420,20 +3021,24 @@ void DrawMaterial(ModelMaterial material)
 	DrawPropertyValue((String){ .chars = "Shader type: ", .length = 14 }, material.shaderName, (String){ 0 }, -1);
 	
 	// draw the meshes
-	CLAY_TEXT(CLAY_STRING("Meshes that use this material:"), { .textColor = textColour, .fontSize = fontSize, .fontId = 0});
+	CLAY_TEXT(MyToClayString((String){ .chars = "Meshes that use this material:", .length = 31 }), { .textColor = textColour, .fontSize = fontSize, .fontId = 0});
 	CLAY_AUTO_ID({ .layout = { .padding = { .left = 3 * padding, .right = 0, .top = 0, .bottom = 0 }, .layoutDirection = CLAY_TOP_TO_BOTTOM, .sizing = { .height = CLAY_SIZING_FIT(), .width = CLAY_SIZING_GROW() } } })
 	{
-		for (int index = 0; index < material.meshes.length; index ++)
+		for (int index = 0; index < material.meshIndexes.length; index ++)
 		{
 			// highlight the mesh if it is hovered over
-			CLAY_AUTO_ID({ .cornerRadius = 2, .backgroundColor = Clay_Hovered() ? meshHovered : meshDefault , .layout = { .sizing = { .height = CLAY_SIZING_GROW(), .width = CLAY_SIZING_GROW() } } })
+			CLAY_AUTO_ID({ .cornerRadius = CLAY_CORNER_RADIUS(2), .backgroundColor = Clay_Hovered() ? meshHovered : meshDefault , .layout = { .sizing = { .height = CLAY_SIZING_GROW(), .width = CLAY_SIZING_GROW() } } })
 			{
+				// get the name of the mesh
+				int meshIndex = material.meshIndexes.ints[index];
+				ModelMesh mesh = model.meshes.meshes[meshIndex];
+				String meshName = mesh.name;
+				
 				// copy the mesh name to the clipboard if it is clicked
-				CopyIfClicked(material.meshes.strings[index]);
+				CopyIfClicked(meshName);
 				
 				// draw the name of the mesh
-				Clay_String mesh = MyToClayString(material.meshes.strings[index]);
-				CLAY_TEXT(mesh, { .textColor = textColour, .fontSize = fontSize, .fontId = 0 });
+				CLAY_TEXT(MyToClayString(meshName), { .textColor = textColour, .fontSize = fontSize, .fontId = 0 });
 			}
 		}
 	}
@@ -2443,28 +3048,33 @@ void DrawMaterial(ModelMaterial material)
 	{
 		KeyValue property = material.properties.keysValues[index];
 		
+		if (ui.onlyRelevantMaterials == true && MaterialPropertyIsRelevant(property) == false)
+		{
+			continue;
+		}
+		
 		DrawPropertyValue(property.key, property.value, (String){ .chars = " : ", .length = 4 }, -1);
 	}
 }
 
 // draws the materials of a model
-void DrawMaterials(MuModel model)
+void DrawMaterials(MuModel model, UiStatus ui)
 {
-	CLAY_AUTO_ID({ .cornerRadius = cornerRadius, .backgroundColor = RaylibToClayColour(WHITE), .layout = { .layoutDirection = CLAY_TOP_TO_BOTTOM, .sizing = { .width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_FIT() }, .padding = CLAY_PADDING_ALL(padding), .childGap = padding } })
+	CLAY_AUTO_ID({ .cornerRadius = CLAY_CORNER_RADIUS(cornerRadius), .backgroundColor = RaylibToClayColour(WHITE), .layout = { .layoutDirection = CLAY_TOP_TO_BOTTOM, .sizing = { .width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_FIT() }, .padding = CLAY_PADDING_ALL(padding), .childGap = padding } })
 	{
 		// draw the name of the model
 		DrawPropertyValue((String){ .chars = "Model name: ", .length = 13 }, model.name, (String){ 0 }, -1);
 		
-		for (int index = 0; index < model.length; index ++)
+		for (int index = 0; index < model.materials.length; index ++)
 		{
-			ModelMaterial material = model.materials[index];
-			DrawMaterial(material);
+			ModelMaterial material = model.materials.materials[index];
+			DrawMaterial(material, model, ui);
 		}
 	}
 }
 
 // draws an array of models
-void DrawModels(ModelArray models)
+void DrawModels(ModelArray models, UiStatus ui)
 {
 	// create a box to store the horizontal scroll bar
 	CLAY_AUTO_ID({ .layout = { .layoutDirection = CLAY_TOP_TO_BOTTOM, .sizing = { .height = CLAY_SIZING_GROW(), .width = CLAY_SIZING_GROW() } } })
@@ -2476,40 +3086,87 @@ void DrawModels(ModelArray models)
 			for (int index = 0; index < models.length; index ++)
 			{
 				MuModel model = models.models[index];
-				DrawMaterials(model);
+				DrawMaterials(model, ui);
 			}
 		}
 		
-		DrawHorizontalScrollbar(Clay_GetElementId(CLAY_STRING("Models")));
+		Clay_String modelsName = MyToClayString((String){ .chars = "Models", .length = 7 });
+		DrawHorizontalScrollbar(Clay_GetElementId(modelsName));
+		//free((void *)modelsName.chars);
 	}
 	
-	DrawVerticalScrollbar(Clay_GetElementId(CLAY_STRING("Models")));
+	Clay_String modelsName = MyToClayString((String){ .chars = "Models", .length = 7 });
+	DrawVerticalScrollbar(Clay_GetElementId(modelsName));
+	//free((void *)modelsName.chars);
 }
 
-const int navbarHeight = 100;
-// draws the navbar and checks which buttons are pressed
-void DrawNavbar(UiStatus * ui)
+// draw a toggleable button
+void DrawToggleButton(String trueTextureName, String falseTextureName, bool * condition, int size)
 {
 	// settings
 	Clay_Color buttonDefault = RaylibToClayColour(WHITE);
 	Clay_Color buttonHovered = RaylibToClayColour(SKYBLUE);
-
-	CLAY(CLAY_ID("NavBar"), { .layout = { .padding = CLAY_PADDING_ALL(padding), .sizing = { .width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_FIXED(navbarHeight) } }, .backgroundColor = RaylibToClayColour(RED) })
+	Clay_LayoutConfig buttonLayout = (Clay_LayoutConfig){ .sizing = { .height = CLAY_SIZING_FIXED(size), .width = CLAY_SIZING_FIXED(size) }, .layoutDirection = CLAY_TOP_TO_BOTTOM, .childAlignment = { .x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER }, .childGap = padding, .padding = CLAY_PADDING_ALL(padding) };
+	
+	// draw a button, with a different image if the condition is true / false
+	CLAY_AUTO_ID({ .backgroundColor = Clay_Hovered() ? buttonHovered : buttonDefault, .aspectRatio = { .aspectRatio = 1.0f }, .cornerRadius = CLAY_CORNER_RADIUS(cornerRadius), .layout = buttonLayout })
 	{
-		CLAY(CLAY_ID("OpenCloseFileBrowserButton"), { .aspectRatio = { .aspectRatio = 1.0f }, .cornerRadius = cornerRadius, .backgroundColor = Clay_Hovered() ? buttonHovered : buttonDefault, .layout = { .sizing = { .height = CLAY_SIZING_GROW(), .width = CLAY_SIZING_GROW() }, .childAlignment = { .x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER }, .childGap = padding } })
+		if (*condition == true)
 		{
-			if (ui->fileBrowserOpen == true)
-			{
-				CLAY_TEXT(CLAY_STRING("Close"), { .textColor = textColour, .fontSize = fontSize, .fontId = 0});
-			}
-			else
-			{
-				CLAY_TEXT(CLAY_STRING("Open"), { .textColor = textColour, .fontSize = fontSize, .fontId = 0});
-			}
-			
+			DrawImage(trueTextureName);
+		}
+		else
+		{
+			DrawImage(falseTextureName);
+		}
+		
+		// toggle the condition if the button is clicked
+		if (Clay_Hovered() == true && IsMouseButtonPressed(0) == true)
+		{
+			*condition = !*condition;
+		}
+	}
+}
+
+// a button
+void DrawButton(String textureName, int size)
+{
+	// settings
+	Clay_Color buttonDefault = RaylibToClayColour(WHITE);
+	Clay_Color buttonHovered = RaylibToClayColour(SKYBLUE);
+	Clay_LayoutConfig buttonLayout = (Clay_LayoutConfig){ .sizing = { .height = CLAY_SIZING_FIXED(size), .width = CLAY_SIZING_FIXED(size) }, .layoutDirection = CLAY_TOP_TO_BOTTOM, .childAlignment = { .x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER }, .childGap = padding, .padding = CLAY_PADDING_ALL(padding) };
+	
+	// draw the button
+	CLAY_AUTO_ID({ .backgroundColor = Clay_Hovered() ? buttonHovered : buttonDefault, .aspectRatio = { .aspectRatio = 1.0f }, .cornerRadius = CLAY_CORNER_RADIUS(cornerRadius), .layout = buttonLayout })
+	{
+		DrawImage(textureName);
+	}
+}
+
+// draws the navbar and checks which buttons are pressed
+void DrawNavbar(UiStatus * ui, PartInformation * part)
+{
+	const int buttonSize = 100;
+	CLAY(CLAY_ID("NavBar"), { .layout = { .childGap = padding, .padding = CLAY_PADDING_ALL(padding), .sizing = { .width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_FIT() } }, .backgroundColor = RaylibToClayColour(RED) })
+	{
+		// button the opens and closes the file browser
+		DrawToggleButton((String){ .chars = "FileBrowserClose.png", .length = 21 }, (String){ .chars = "FileBrowserOpen.png", .length = 20 }, &ui->fileBrowserOpen, buttonSize);
+		// button that opens and closes the module tree
+		DrawToggleButton((String){ .chars = "ModuleTreeClose.png", .length = 20 }, (String){ .chars = "ModuleTreeOpen.png", .length = 19 }, &ui->moduleTreeOpen, buttonSize);
+		// button that opens and closes the model list
+		DrawToggleButton((String){ .chars = "ModelsListClose.png", .length = 20 }, (String){ .chars = "ModelsListOpen.png", .length = 19 }, &ui->modelListOpen, buttonSize);
+		// buttons that turns on and off relevant modules
+		DrawToggleButton((String){ .chars = "ModuleTreeRelevantOn.png", .length = 25 }, (String){ .chars = "ModuleTreeRelevantOff.png", .length = 26 }, &ui->onlyRelevantModules, buttonSize);
+		// buttons that turns on and off relevant materials
+		DrawToggleButton((String){ .chars = "ModelsListRelevantOn.png", .length = 25 }, (String){ .chars = "ModelsListRelevantOff.png", .length = 26 }, &ui->onlyRelevantMaterials, buttonSize);
+		// button to try and create a recolour
+		CLAY_AUTO_ID({ .layout = { .sizing = { .width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_GROW() } } })
+		{
+			DrawButton((String){ .chars = "Recolour.png", .length = 13 }, buttonSize);
+			// if the button is clicked try and create a recolour for the part
 			if (Clay_Hovered() == true && IsMouseButtonPressed(0) == true)
 			{
-				ui->fileBrowserOpen = !ui->fileBrowserOpen;
+				Recolour(part);
 			}
 		}
 	}
@@ -2538,6 +3195,11 @@ int main(void)
 	Clay_Initialize(clayMemory, (Clay_Dimensions){ .width = GetScreenWidth(), .height = GetScreenHeight() }, (Clay_ErrorHandler){ .errorHandlerFunction = HandleClayErrors, .userData = NULL });
 	Clay_SetMeasureTextFunction(Raylib_MeasureText, fonts);
 	
+	// the set of textures that have been loaded and are ready to use
+	NamedTextureArray sprites = { 0 };
+	LoadSprites(&sprites);
+	spriteAtlas = &sprites;
+	
 	// the currently selected part
 	PartInformation selectedPart = { 0 };
 	
@@ -2545,7 +3207,7 @@ int main(void)
 	bool debug = false;
 	
 	// what windows are open
-	UiStatus ui = (UiStatus){ .fileBrowserOpen = true, .moduleTreeOpen = true, .onlyImportantModules = false, .modelListOpen = true, .onlyImportantMaterials = false };
+	UiStatus ui = (UiStatus){ .fileBrowserOpen = true, .moduleTreeOpen = true, .onlyRelevantModules = true, .modelListOpen = true, .onlyRelevantMaterials = false };
 	
 	SetTargetFPS(60); // target framerate
 	SetExitKey(KEY_BACKSPACE); // key to close the game
@@ -2590,7 +3252,8 @@ int main(void)
 		// a window that fills the whole screen
 		CLAY(CLAY_ID("MainWindow"), { .layout = { .layoutDirection = CLAY_TOP_TO_BOTTOM, .sizing = { .width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_GROW() } } })
 		{
-			DrawNavbar(&ui);
+			// buttons to controll the program
+			DrawNavbar(&ui, &selectedPart);
 			
 			// holds the boxes that hold the functions of the program
 			CLAY(CLAY_ID("Content"), { .layout = { .layoutDirection = CLAY_LEFT_TO_RIGHT, .sizing = { .width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_GROW() } } })
@@ -2610,7 +3273,7 @@ int main(void)
 					CLAY(CLAY_ID("ModuleTreeBox"), { .layout = { .sizing = { .width = CLAY_SIZING_FIT(), .height = CLAY_SIZING_GROW() } } })
 					{
 						// draw the modules
-						DrawPartModules(selectedPart.modules);
+						DrawPartModules(selectedPart.modules, ui);
 					}
 				}
 				if (ui.modelListOpen == true)
@@ -2619,7 +3282,7 @@ int main(void)
 					CLAY(CLAY_ID("ModelListBox"), { .layout = { .sizing = { .width = CLAY_SIZING_FIT(), .height = CLAY_SIZING_GROW() } } })
 					{
 						// draw the models
-						DrawModels(selectedPart.models);
+						DrawModels(selectedPart.models, ui);
 					}
 				}
 			}
@@ -2635,6 +3298,9 @@ int main(void)
 		Clay_Raylib_Render(renderCommands, fonts);
 		// disable raylib drawing
 		EndDrawing();
+		
+		// free 
+		FreeFreeQueue();
 	}
 	
 	// De-Initialization
