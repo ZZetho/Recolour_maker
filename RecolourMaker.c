@@ -117,7 +117,8 @@ typedef struct ModelMaterial ModelMaterial;
 typedef struct ModelMesh
 {
 	String name;
-	int materialIndex;		// indes into the models material array of the material this mesh uses
+	int materialId;		// id of the material that is used by this mesh
+	int id;				// unique id of this mesh, so that materials can find it
 }
 ModelMesh;
 
@@ -134,8 +135,9 @@ struct ModelMaterial
 {
 	String materialName;
 	String shaderName;
-	IntArray meshIndexes;		// the indexes into the models mesh array of the meshes that use this material
 	KeyValueArray properties;
+	IntArray meshIds;			// the ids of the meshes that use this material
+	int id;						// unique id of this material, so that meshes can find it
 };
 
 typedef struct MaterialArray
@@ -173,16 +175,6 @@ typedef struct PartInformation
 	ModelArray models;				// parsed modelData.txt's
 }
 PartInformation;
-
-typedef struct UiStatus
-{
-	bool fileBrowserOpen;
-	bool moduleTreeOpen;
-	bool onlyRelevantModules;
-	bool modelListOpen;
-	bool onlyRelevantMaterials;
-}
-UiStatus;
 
 // texture with a name so it can be identified
 typedef struct NamedTexture
@@ -302,8 +294,8 @@ int SignificantFigures(int i)
 	return significantFigures;
 }
 
-// for printing ints
-char * IntToString(int i)
+// for converts an int to a string
+void IntToString(int i, String * output)
 {
 	bool negative = false;
 	if (i < 0)
@@ -318,7 +310,7 @@ char * IntToString(int i)
 	int significantFigures = SignificantFigures(i);
 	int nullByte = 1;
 	int outputLength = significantFigures + negative + nullByte;
-	char * output = malloc(sizeof(char) * outputLength);
+	*output = (String){ .chars = realloc(output->chars, sizeof(char) * outputLength), .length = outputLength };
 
 	//printf("output length: %d\n", outputLength);
 
@@ -332,19 +324,17 @@ char * IntToString(int i)
 		figure %= 10;
 		figure += 48;
 		//printf("%d, %c, ", significantFigures - sigFigIndex - 1, figure);
-		output[sigFigIndex + negative] = figure;
+		output->chars[sigFigIndex + negative] = figure;
 	}
 
 	if (negative == true)
 	{
 		//printf("negative\n");
-		output[0] = '-';
+		output->chars[0] = '-';
 	}
 
-	output[outputLength - 1] = '\0';
+	output->chars[outputLength - 1] = '\0';
 	//printf("%s\n", output);
-
-	return output;
 }
 
 // converts a raylib colour to a clay colour
@@ -352,6 +342,14 @@ Clay_Color RaylibToClayColour(Color raylib)
 {
 	Clay_Color clay = (Clay_Color){ .r = raylib.r, .g = raylib.g, .b = raylib.b, .a = raylib.a };
 	return clay;
+}
+
+// returns a unique number every time
+int UniqueId()
+{
+	static int id = 0;
+	id ++;
+	return id;
 }
 
 //█▀ ▀█▀ █▀█ █ █▄░█ █▀▀   █▀▀ █░█ █▄░█ █▀▀ ▀█▀ █ █▀█ █▄░█ █▀
@@ -362,7 +360,7 @@ int LastIndexOfChar(String string, int startingIndex, char target)
 {
 	if (startingIndex > string.length - 1 || startingIndex < 0)
 	{
-		printf("startingIndex: %d out of range: 0-%d\n", startingIndex, string.length - 1);
+		//printf("startingIndex: %d out of range: 0-%d\n", startingIndex, string.length - 1);
 		return -1;
 	}
 
@@ -382,7 +380,7 @@ int IndexOfChar(String string, int startingIndex, char target)
 {
 	if (startingIndex > string.length - 1 || startingIndex < 0)
 	{
-		printf("startingIndex: %d out of range: 0-%d\n", startingIndex, string.length - 1);
+		//printf("startingIndex: %d out of range: 0-%d\n", startingIndex, string.length - 1);
 		return -1;
 	}
 	
@@ -698,23 +696,55 @@ String ExtractString(String extractee, int startIndex, int endIndex)
 // adds the second string to the end of the first one
 void ConcatenateStrings(String stringOne, String stringTwo, String * output)
 {
-	GarunteeNullTerminator(&stringOne);
-	GarunteeNullTerminator(&stringTwo);
-	
-//	BetterPrint(stringOne);
-//	BetterPrint(stringTwo);
-//	printf("being combined\n");
+	//BetterPrint(stringOne);
+	//BetterPrint(stringTwo);
+	//printf("being combined to make:\n");
 	
 	// egg\0			(length 4)
 	// cheese\0			(length 7)
 	// -> eggcheese\0	(length 10)
 	
-	int stringTwoAddIndex = stringOne.length - 1;
-	int outputLength = stringOne.length + stringTwo.length - 1;
+	// strings may not have a null terminator
+	
+	int stringTwoAddIndex = stringOne.length;
+	
+	// if string one has a null terminator, add string two on top of it to get rid of it
+	if (stringOne.length >= 1 && stringOne.chars[stringOne.length - 1] == '\0')
+	{
+		stringTwoAddIndex -= 1;
+	}
+	
+	int outputLength = stringTwoAddIndex + stringTwo.length;
 	ResizeString(output, outputLength);
 	
 	memcpy(output->chars, stringOne.chars, sizeof(char) * stringOne.length);
 	memcpy(&output->chars[stringTwoAddIndex], stringTwo.chars, sizeof(char) * stringTwo.length);
+	
+	//BetterPrint(*output);
+}
+
+// adds a string to the end of another
+void AddToString(String * addee, String added)
+{
+	int addIndex = addee->length;
+	
+	// if addee has a null terminator, add added on top of it to get rid of it
+	if (addee->length >= 1 && addee->chars[addee->length - 1] == '\0')
+	{
+		addIndex -= 1;
+	}
+	
+	//printf("addIndex: %d\n", addIndex);
+	
+	int newLength = addIndex + added.length;
+	
+	//printf("newLength: %d\n", newLength);
+	
+	ResizeString(addee, newLength);
+	
+	memcpy(&addee->chars[addIndex], added.chars, sizeof(char) * added.length);
+	
+	//printf("added to string:\n%s\n", addee->chars);
 }
 
 // checks if a string starts with another string
@@ -1550,9 +1580,9 @@ KeyValue ParseMeshProperty(String propertyLine)
 //-------------------------------------------
 
 // makes a material with all properties 0 or NULL
-void EmptyMaterial(ModelMaterial * material)
+void NewMaterial(ModelMaterial * material)
 {
-	*material = (ModelMaterial){ .materialName = (String){ .chars = NULL, .length = 0 }, .shaderName = (String){ .chars = NULL, .length = 0 }, .meshIndexes = (IntArray){ .ints = NULL, .length = 0 }, .properties = (KeyValueArray){ .keysValues = NULL, .length = 0 }};
+	*material = (ModelMaterial){ .materialName = (String){ .chars = NULL, .length = 0 }, .shaderName = (String){ .chars = NULL, .length = 0 }, .meshIds = (IntArray){ .ints = NULL, .length = 0 }, .id = UniqueId(), .properties = (KeyValueArray){ .keysValues = NULL, .length = 0 }};
 }
 
 // adds a property to a material
@@ -1571,11 +1601,11 @@ void AddProperty(KeyValue property, ModelMaterial * material)
 }
 
 // adds a mesh to the list of meshes that use a material
-void AddMesh(int meshIndex, ModelMaterial * material)
+void AddMesh(int meshId, ModelMaterial * material)
 {
-	material->meshIndexes.length += 1;
-	material->meshIndexes.ints = realloc(material->meshIndexes.ints, sizeof(ModelMesh *) * material->meshIndexes.length);
-	material->meshIndexes.ints[material->meshIndexes.length - 1] = meshIndex;
+	material->meshIds.length += 1;
+	material->meshIds.ints = realloc(material->meshIds.ints, sizeof(ModelMesh *) * material->meshIds.length);
+	material->meshIds.ints[material->meshIds.length - 1] = meshId;
 }
 
 // reads the information about the material that a mesh uses
@@ -1614,8 +1644,6 @@ void MaterialPropertiesFromMesh(ModelMaterial * material, String modelData, int 
 //	printf("seventh line: ");
 //	BetterPrint(seventhLine);
 	
-	EmptyMaterial(material);
-	
 	AddProperty(ParseMeshProperty(thirdLine), material);
 	AddProperty(ParseMeshProperty(fifthLine), material);
 	material->materialName = ParseMeshProperty(sixthLine).value;
@@ -1649,22 +1677,6 @@ void MaterialPropertiesFromMesh(ModelMaterial * material, String modelData, int 
 	}
 	
 	return;
-}
-
-//struct ModelMaterial
-//{
-//	String materialName;
-//	String shaderName;
-//	MeshPointerArray meshes;		// the meshes that use this material, a subset of the meshes used by MuModel
-//	KeyValueArray properties;
-//};
-
-void BlankMaterial(ModelMaterial * material)
-{
-	material->materialName = (String){ .chars = NULL, .length = 0 };
-	material->shaderName = (String){ .chars = NULL, .length = 0 };
-	material->meshIndexes = (IntArray){ .ints = NULL, .length = 0 };
-	material->properties = (KeyValueArray){ .keysValues = NULL, .length = 0 };
 }
 
 void ParseModelData(MuModel * model, String modelData)
@@ -1708,9 +1720,9 @@ void ParseModelData(MuModel * model, String modelData)
 		// a mesh has been found, add it to this model
 		model->meshes.length += 1;
 		model->meshes.meshes = realloc(model->meshes.meshes, sizeof(ModelMesh) * model->meshes.length);
-		int meshIndex = model->meshes.length - 1;
-		ModelMesh * mesh = &model->meshes.meshes[meshIndex];
+		ModelMesh * mesh = &model->meshes.meshes[model->meshes.length - 1];
 		
+		mesh->id = UniqueId();
 		// find the name of the mesh
 		mesh->name = FindMeshName(modelData, meshStartIndex);
 		
@@ -1728,9 +1740,9 @@ void ParseModelData(MuModel * model, String modelData)
 			// add this mesh to the list of meshes that the material uses
 			ModelMaterial * existingMaterial = &model->materials.materials[materialIndex];
 			// add this mesh to the list of meshes that use this material
-			AddMesh(meshIndex, existingMaterial);
+			AddMesh(mesh->id, existingMaterial);
 			// set this material as the material the mesh uses
-			mesh->materialIndex = materialIndex;
+			mesh->materialId = existingMaterial->id;
 			continue;
 		}
 		
@@ -1738,13 +1750,13 @@ void ParseModelData(MuModel * model, String modelData)
 		// add a new material to the model
 		model->materials.length += 1;
 		model->materials.materials = realloc(model->materials.materials, sizeof(ModelMaterial) * model->materials.length);
-		int newMaterialIndex = model->materials.length - 1;
-		ModelMaterial * newMaterial = &model->materials.materials[newMaterialIndex];
-		BlankMaterial(newMaterial);
+		ModelMaterial * newMaterial = &model->materials.materials[model->materials.length - 1];
+		NewMaterial(newMaterial);
+		
 		// add this mesh to the list of meshes that the material uses
-		AddMesh(meshIndex, newMaterial);
+		AddMesh(mesh->id, newMaterial);
 		// set this material as the material the mesh uses
-		mesh->materialIndex = newMaterialIndex;
+		mesh->materialId = newMaterial->id;
 		
 		// get the properties of the new material from the mesh's bit of modelData
 		MaterialPropertiesFromMesh(newMaterial, modelData, meshStartIndex);
@@ -1896,6 +1908,27 @@ void LoadModelData(PartInformation * part)
 	
 	FreeStringArray(&modelPaths);
 	FreeStringArray(&modelDataFilesContents);
+}
+
+// finds the mesh in a part that has a specific id
+ModelMesh * GetMeshWithId(PartInformation part, int id)
+{
+	for (int modelIndex = 0; modelIndex < part.models.length; modelIndex ++)
+	{
+		MuModel * model = &part.models.models[modelIndex];
+		
+		for (int meshIndex = 0; meshIndex < model->meshes.length; meshIndex ++)
+		{
+			ModelMesh * mesh = &model->meshes.meshes[meshIndex];
+			
+			if (mesh->id == id)
+			{
+				return mesh;
+			}
+		}
+	}
+	
+	return NULL;
 }
 
 //█▀▄ █ █▀█ █▀▀ █▀▀ ▀█▀ █▀█ █▀█ █▄█   █▄░█ ▄▀█ █░█ █ █▀▀ ▄▀█ ▀█▀ █ █▀█ █▄░█
@@ -2226,6 +2259,7 @@ typedef struct TextureSet
 	String title;			// this is what the texture set is called in game
 	ModelMaterial * material;
 }
+TextureSet;
 
 typedef struct TextureSetArray
 {
@@ -2236,11 +2270,11 @@ TextureSetArray;
 
 typedef struct TextureSwitch
 {
-	String name;
-	String sectionName;				// in game switcher name
+	String name;					// in game switcher name
 	TextureSet * currentTextureSet;	// the texture set that is selected to begin with
 	TextureSetArray textureSets;	// available texture sets
 }
+TextureSwitch;
 
 typedef struct TextureSwitchArray
 {
@@ -2266,7 +2300,7 @@ TextureSwitchArray;
 // KSP/Bumped Specular (Transparent)
 
 // irelevant shader types:
-// KSP/Alpha/Cutoff
+// KSP/Alpha/CutoffDrawNavbar
 // KSP/Alpha/Cutoff Bumped
 // KSP/Alpha/CutoffBackground
 // KSP/Alpha/Translucent
@@ -2299,13 +2333,13 @@ typedef enum ShaderType
 ShaderType;
 
 // find the shader used by the material that a mesh uses
-ShaderType GetShaderType(ModelMaterial material, MuModel model)
+ShaderType GetShaderType(ModelMaterial material)
 {
 	// find the name of the shader
 	String shaderName = material.shaderName;
 	
 	printf("material: ");
-	BetterPrint(material.name);
+	BetterPrint(material.materialName);
 	printf("uses shader: ");
 	BetterPrint(shaderName);
 	
@@ -2332,19 +2366,20 @@ ShaderType GetShaderType(ModelMaterial material, MuModel model)
 	// trouble
 	String bumpedSpecularTransparent = (String){ .chars = "KSP/Bumped Specular (Transparent)", .length = 34 };
 	// irrelevant
-	String alpha = (String){ .chars = "KSP/Alpha", .length = 10 };
-	String particles = (String){ .chars = "KSP/Particles", .length = 14 };
+	// lengths are one less than normal because we dont want to include the null terminator
+	String alpha = (String){ .chars = "KSP/Alpha", .length = 9 };
+	String particles = (String){ .chars = "KSP/Particles", .length = 13 };
 	
 	// trouble
 	if (StringsEqual(shaderName, bumpedSpecularTransparent) == true)
 	{
-		printf("WARNING: material: %s uses the KSP/Bumped Specular (Transparent) shader type, recolouring may not be possibe\n", material.name.chars);
+		printf("WARNING: material: %s uses the KSP/Bumped Specular (Transparent) shader type, recolouring may not be possibe\n", material.materialName.chars);
 		return BUMPED_SPECULAR_TRANSPARENT;
 	}
 	// irrelevant
 	else if (StringStartsWith(shaderName, alpha) == true || StringStartsWith(shaderName, particles) == true)
 	{
-		printf("material: %s uses irrelevant shader type: %s\n", material.name.chars, shaderName.chars);
+		printf("material: %s uses irrelevant shader type: %s\n", material.materialName.chars, shaderName.chars);
 		return IRRELEVANT;
 	}
 	
@@ -2386,7 +2421,7 @@ ShaderType GetShaderType(ModelMaterial material, MuModel model)
 		return EMISSIVE_SPECULAR;
 	}
 	
-	printf("WARNING: material: %s uses unknown shader type: %s automatic recolor creation not possible\n", material.name.chars, shaderName.chars);
+	printf("WARNING: material: %s uses unknown shader type: %s automatic recolor creation not possible\n", material.materialName.chars, shaderName.chars);
 	return UNKNOWN;
 }
 
@@ -2435,21 +2470,446 @@ int IndexOfMaterial(MaterialArray materials, ModelMaterial material)
 	return -1;
 }
 
-void Recolour(PartInformation * part)
+// add the properties of a material to the default patch
+void AddDefaultProperties(ModelMaterial material, String * patch)
 {
-	// find which materials are relevant by checking their shader type
-	// if there is only one relevant material a single texture switch recolour can be made
-	// otherwise, if there are multiple relevant materials
-	// if the part has a set of variants that can be replicated with the stock variants system recolourable variants can be used
-	// otherwise a texture switcher must be made for each relevant material
-	// materials may also be duplicated if multiple of the same mesh is used in a model
+	// the material will have some textures
+	String mainTex = (String){ .chars = "_MainTex", .length = 9 };
+	String bumpMap = (String){ .chars = "_BumpMap", .length = 9 };
+	String emissive = (String){ .chars = "_Emissive", .length = 10 };
+	String metalMap = (String){ .chars = "_MetalMap", .length = 10 };
+	String specMap = (String){ .chars = "_SpecMap", .length = 9 };
+	StringArray textureTypes = (StringArray){ .strings = malloc(sizeof(String) * 5), .length = 5 };
+	textureTypes.strings[0] = mainTex;
+	textureTypes.strings[1] = bumpMap;
+	textureTypes.strings[2] = emissive;
+	textureTypes.strings[3] = metalMap;
+	textureTypes.strings[4] = specMap;
 	
-	// TODO: also check if multiple identically named meshes use different materials
-	// if so: uh oh
+	// in a texture set these are written:
+	// texture = _MainTex,Tantares/parts/core_vostok/a1
 	
-	// fist of all, get a list of the relevant materials a part uses and create texture sets with them
-	ModelArray models = part->models;
-	MaterialArray relevantMaterials = (MaterialArray){ .materials = NULL, .length = 0 };
+	// the material will have some other properties
+	// single floats with values like: 0.4
+	String shininess = (String){ .chars = "_Shininess", .length = 11 };
+	String metalness = (String){ .chars = "_Metalness", .length = 11 };
+	String smoothness = (String){ .chars = "_Smoothness", .length = 12 };
+	String metalAlbedoMultiplier = (String){ .chars = "_MetalAlbedoMultiplier", .length = 23 };
+	StringArray floatProperties = (StringArray){ .strings = malloc(sizeof(String) * 4), .length = 4 };
+	floatProperties.strings[0] = shininess;
+	floatProperties.strings[1] = metalness;
+	floatProperties.strings[2] = smoothness;
+	floatProperties.strings[3] = metalAlbedoMultiplier;
+	
+	// written as:
+//	PROPERTY
+//	{
+//		name = _Shininess
+//		float = 0.4
+//	}
+
+	// four float colours with values like: (1.0, 1.0, 1.0, 1.0)
+	String color = (String){ .chars = "_Color", .length = 7 };
+	String emissiveColor = (String){ .chars = "_EmissiveColor", .length = 15 };
+	StringArray colourProperties = (StringArray){ .strings = malloc(sizeof(String) * 2), .length = 2 };
+	colourProperties.strings[0] = color;
+	colourProperties.strings[1] = emissiveColor;
+	
+	// written as:
+//	PROPERTY
+//	{
+//		name = _Color
+//		color = 1.0, 1.0, 1.0, 1.0
+//	}
+
+	// there are also a bunch of propeties that are probably irrelevant
+	String renderType = (String){ .chars = "Render Type", .length = 12 };
+	String materialNumber = (String){ .chars = "Material #", .length = 11 };
+	String renderQueue = (String){ .chars = "RenderQueue", .length = 12 };
+	String mainTexOffset = (String){ .chars = "_MainTexOffset", .length = 15 };
+	String bumpMapOffset = (String){ .chars = "_BumpMapOffset", .length = 15 };
+	String emissiveOffset = (String){ .chars = "_EmissiveOffset", .length = 16 };
+	StringArray irrelevantProperties = (StringArray){ .strings = malloc(sizeof(String) * 6), .length = 6 };
+	irrelevantProperties.strings[0] = renderType;
+	irrelevantProperties.strings[1] = materialNumber;
+	irrelevantProperties.strings[2] = renderQueue;
+	irrelevantProperties.strings[3] = mainTexOffset;
+	irrelevantProperties.strings[4] = bumpMapOffset;
+	irrelevantProperties.strings[5] = emissiveOffset;
+	
+	// depending on the property type add them correctly
+	for (int index = 0; index < material.properties.length; index ++)
+	{
+		String property = material.properties.keysValues[index].key;
+		String value = material.properties.keysValues[index].value;
+		
+		if (StringEqualToAny(property, textureTypes) == true)
+		{
+			AddToString(patch, (String){ .chars = "\n		texture = ", .length = 14 });
+			AddToString(patch, property);
+			AddToString(patch, (String){ .chars = ",", .length = 2});
+			AddToString(patch, value);
+			continue;
+		}
+		
+		if (StringEqualToAny(property, floatProperties) == true)
+		{
+			AddToString(patch, (String){ .chars = "\n		PROPERTY\n		{\n			name = ", .length = 27 });
+			AddToString(patch, property);
+			AddToString(patch, (String){ .chars = "\n			float = ", .length = 13 });
+			AddToString(patch, value);
+			AddToString(patch, (String){ .chars = "\n		}", .length = 5 });
+			continue;
+		}
+		
+		if (StringEqualToAny(property, colourProperties) == true)
+		{
+			AddToString(patch, (String){ .chars = "\n		PROPERTY\n		{\n			name = ", .length = 27 });
+			AddToString(patch, property);
+			AddToString(patch, (String){ .chars = "\n			color = ", .length = 13 });
+			
+			// get rid of the ( ) around the value
+			// (1.0, 1.0, 1.0, 1.0) 20
+			// 1.0, 1.0, 1.0, 1.0	18
+			String cleanedValue = (String){ .chars = malloc(sizeof(char) * 18), .length = 18 };
+			memcpy(cleanedValue.chars, &value.chars[1], sizeof(char) * cleanedValue.length);
+			
+			AddToString(patch, cleanedValue);
+			AddToString(patch, (String){ .chars = "\n		}", .length = 5 });
+			
+			free(cleanedValue.chars);
+			continue;
+		}
+		
+		if (StringEqualToAny(property, irrelevantProperties) == true)
+		{
+			printf("property type: %s is irrelevant, skipping\n", property.chars);
+			continue;
+		}
+		
+		printf("WARNING: property type: %s is unknown, skipping\n", property.chars);
+	}
+	
+	free(textureTypes.strings);
+	free(floatProperties.strings);
+	free(colourProperties.strings);
+	free(irrelevantProperties.strings);
+}
+
+// adds properties to the recolour patch depending on what the properties of the material are
+void AddRecolourProperties(ModelMaterial material, String * patch)
+{
+	// the recolour shader is TU/Specular
+	// this has the important textures:
+	// _MainTex
+	// _BumpMap
+	// _SpecGlossMap
+	// _MaskTex
+	// _Emission
+	// and not important textures:
+	// _AOMap
+	// _Thickness
+	// _SpecGlossNormMask
+	// _SpecGlossInputMask
+	
+	// _MainTex and _BumpMap should stay the same as the original material
+	// if the shader is Specular or Specular (Mapped) then _SpecGlossMap should use the _MainTex (for specular) / _SpecMap (for specular mapped)
+	// _Emission not sure about this one, may or may not need a custom texture is the shader is emissive, for now use _Emissive
+	// _MaskTex this is where the recolour mask should go
+	
+	// TU shaders also have vectors:
+	// _DiffuseNorm
+	// _MetalNorm or _SpecularNorm and _SmoothnessNorm
+	
+	// all properties that are not textures can probably be ignored
+	String mainTex = (String){ .chars = "_MainTex", .length = 9 };
+	String bumpMap = (String){ .chars = "_BumpMap", .length = 9 };
+	String emissive = (String){ .chars = "_Emissive", .length = 10 };
+	String metalMap = (String){ .chars = "_MetalMap", .length = 10 };
+	String specMap = (String){ .chars = "_SpecMap", .length = 9 };
+	StringArray textureTypes = (StringArray){ .strings = malloc(sizeof(String) * 5), .length = 5 };
+	textureTypes.strings[0] = mainTex;
+	textureTypes.strings[1] = bumpMap;
+	textureTypes.strings[2] = emissive;
+	textureTypes.strings[3] = metalMap;
+	textureTypes.strings[4] = specMap;
+	
+	ShaderType shaderType = GetShaderType(material);
+	
+	for (int index = 0; index < material.properties.length; index ++)
+	{
+		String property = material.properties.keysValues[index].key;
+		String value = material.properties.keysValues[index].value;
+		
+		if (StringsEqual(property, mainTex) == true)
+		{
+			// main tex
+			AddToString(patch, (String){ .chars = "\n		texture = ", .length = 14 });
+			AddToString(patch, property);
+			AddToString(patch, (String){ .chars = ",", .length = 2});
+			AddToString(patch, value);
+			
+			// if the shader is specular (but not specular mapped) main tex should also be used for _SpecGlossMap
+			if (shaderType == SPECULAR || shaderType == BUMPED_SPECULAR || shaderType == BUMPED_SPECULAR_TRANSPARENT || shaderType == EMISSIVE_BUMPED_SPECULAR || shaderType == EMISSIVE_SPECULAR)
+			{
+				AddToString(patch, (String){ .chars = "\n		texture = _SpecGlossMap,", .length = 28 });
+				AddToString(patch, value);
+			}
+			continue;
+		}
+		
+		if (StringsEqual(property, bumpMap) == true)
+		{
+			// bump map
+			AddToString(patch, (String){ .chars = "\n		texture = ", .length = 14 });
+			AddToString(patch, property);
+			AddToString(patch, (String){ .chars = ",", .length = 2});
+			AddToString(patch, value);
+			continue;
+		}
+		
+		if (StringsEqual(property, emissive) == true)
+		{
+			// emissive
+			AddToString(patch, (String){ .chars = "\n		texture = _Emission,", .length = 24 });
+			AddToString(patch, value);
+			continue;
+		}
+		
+		if (StringsEqual(property, metalMap) == true)
+		{
+			// this should only show up in resurfaced shaders, TODO: deal with this properly
+			printf("found a _MetalMap, i'm not programmed to deal with that yet, soz.\n");
+			continue;
+		}
+		
+		if (StringsEqual(property, specMap) == true)
+		{
+			// specular map
+			AddToString(patch, (String){ .chars = "\n		texture = _SpecGlossMap,", .length = 28 });
+			AddToString(patch, value);
+			continue;
+		}
+		
+		printf("property: %s not listed as relevant to recolouring, skipping\n", property.chars);
+	}
+	
+	free(textureTypes.strings);
+}
+
+// creates a patch that will replace the parts materials with texture sets controlled by texture switchers
+void CreateDefaultPatch(PartInformation part, TextureSwitchArray textureSwitches, String * defaultPatch)
+{
+// eg:
+//	@PART[andromeda_avionics_s1_1]:FOR[000_TU_Tantares_Default_001]:NEEDS[TexturesUnlimited&Tantares]
+//	{
+//		MODULE
+//		{
+//			name = KSPTextureSwitch
+//			switcherId = Appearance
+//			sectionName = Appearance
+//			currentTextureSet = Tantares_Default_Andromeda_Avionics
+//			textureSet = Tantares_Default_Andromeda_Avionics
+//		}
+//	}
+//	+KSP_TEXTURE_SET[Tantares_Default]:NEEDS[TexturesUnlimited&Tantares]
+//	{
+//		@name = Tantares_Default_Andromeda_Avionics
+//		@MATERIAL
+//		{		
+//			@shader = KSP/Bumped Specular
+//		
+//			mesh = mesh1
+//		
+//			texture = _MainTex,Tantares/parts/core_vostok/a1
+//			texture = _BumpMap,Tantares/parts/core_vostok/n1
+//			
+//			PROPERTY
+//			{
+//				name = _Shininess
+//				float = 0.4
+//			}
+//		}
+//	}
+	
+	AddToString(defaultPatch, (String){ .chars = "@PART[", .length = 7 });
+	AddToString(defaultPatch, *part.modules.name);
+	AddToString(defaultPatch, (String){ .chars = "]:FOR[", .length = 7 });
+	// TODO: make a way to set the ordering
+	AddToString(defaultPatch, (String){ .chars = "000_TU_Default_000", .length = 19 });
+	AddToString(defaultPatch, (String){ .chars = "]:NEEDS[TexturesUnlimited&", .length = 27 });
+	// TODO: make a way to set mod requirements
+	AddToString(defaultPatch, (String){ .chars = "<MODNAME>", .length = 10 });
+	AddToString(defaultPatch, (String){ .chars = "]\n{\n", .length = 5 });
+	
+	// add each texture switch
+	for (int index = 0; index < textureSwitches.length; index ++)
+	{
+		TextureSwitch textureSwitch = textureSwitches.textureSwitches[index];
+		
+		AddToString(defaultPatch, (String){ .chars = "	MODULE\n	{\n		name = KSPTextureSwitch\n		sectionName = ", .length = 54 });
+		AddToString(defaultPatch, textureSwitch.name);
+		AddToString(defaultPatch, (String){ .chars = "\n		currentTextureSet = ", .length = 24 });
+		AddToString(defaultPatch, textureSwitch.currentTextureSet->name);
+		AddToString(defaultPatch, (String){ .chars = "\n		textureSet = ", .length = 17 });
+		AddToString(defaultPatch, textureSwitch.currentTextureSet->name);
+		AddToString(defaultPatch, (String){ .chars = "\n	}\n", .length = 5 });
+	}
+	
+	AddToString(defaultPatch, (String){ .chars = "}\n", .length = 3 });
+	
+	// add the default texture sets of each texture switch
+	for (int textureSwitchIndex = 0; textureSwitchIndex < textureSwitches.length; textureSwitchIndex ++)
+	{
+		TextureSwitch textureSwitch = textureSwitches.textureSwitches[textureSwitchIndex];
+		TextureSet textureSet = textureSwitch.textureSets.textureSets[0];
+		ModelMaterial material = *textureSet.material;
+		
+		AddToString(defaultPatch, (String){ .chars = "+KSP_TEXTURE_SET[", .length = 18 });
+		// TODO: make a way to set the default texture set to copy
+		AddToString(defaultPatch, (String){ .chars = "<DEFAULT_TEXTURE_SET>", .length = 22 });
+		AddToString(defaultPatch, (String){ .chars = "]:NEEDS[TexturesUnlimited&", .length = 27 });
+		// TODO: make a way to set mod requirements
+		AddToString(defaultPatch, (String){ .chars = "<MODNAME>", .length = 10 });
+		AddToString(defaultPatch, (String){ .chars = "]\n{\n	@name = ", .length = 14 });
+		AddToString(defaultPatch, textureSet.name);
+		AddToString(defaultPatch, (String){ .chars = "\n	@MATERIAL\n	{\n		@shader = ", .length = 28 });
+		AddToString(defaultPatch, material.shaderName);
+		AddToString(defaultPatch, (String){ .chars = "\n", .length = 2 });
+		
+		// add the meshes of the material
+		for (int meshIndex = 0; meshIndex < material.meshIds.length; meshIndex ++)
+		{
+			int meshId = material.meshIds.ints[meshIndex];
+			ModelMesh * mesh = GetMeshWithId(part, meshId);
+			
+			if (mesh == NULL)
+			{
+				continue;
+			}
+			
+			AddToString(defaultPatch, (String){ .chars = "\n		mesh = ", .length = 11 });
+			AddToString(defaultPatch, mesh->name);
+		}
+		
+		AddToString(defaultPatch, (String){ .chars = "\n", .length = 2 });
+		
+		// add the propeties of the material to the patch
+		AddDefaultProperties(material, defaultPatch);
+		
+		AddToString(defaultPatch, (String){ .chars = "\n	}\n}\n", .length = 7 });
+	}
+	
+	//BetterPrint(defaultPatch);
+}
+
+// creates a patch to add recolour texture sets to the texture switches of a part
+void CreateRecolourPatch(PartInformation part, TextureSwitchArray textureSwitches, String * recolourPatch)
+{
+	// eg:
+//	@PART[andromeda_avionics_s1_1]:FOR[999_TU_Tantares_Recolour_001]:NEEDS[TexturesUnlimited&Tantares]
+//	{
+//		@MODULE[KSPTextureSwitch],0
+//		{
+//			textureSet = Tantares_Paint_Andromeda_Avionics
+//		}
+//		%MODULE[SSTURecolorGUI]
+//		{
+//			%name = SSTURecolorGUI
+//		}
+//	}
+//	+KSP_TEXTURE_SET[Tantares_Paint]:NEEDS[TexturesUnlimited&Tantares]
+//	{
+//		@name = Tantares_Paint_Andromeda_Avionics
+//		@MATERIAL
+//		{
+//			mesh = mesh1
+//		
+//			texture = _MainTex,Tantares/parts/core_vostok/a1
+//			texture = _BumpMap,Tantares/parts/core_vostok/n1
+//			texture = _MetallicGlossMap,TU_Tantares/Parts/Andromeda/a1_spec
+//			texture = _MaskTex,TU_Tantares/Parts/Andromeda/a1_paint
+//			
+//			vector = _DiffuseNorm,0.33,0.33,0.33
+//			vector = _MetalNorm,0.69,0.69,0.69
+//			vector = _SmoothnessNorm,0.71,0.71,0.71
+//		}
+//	}
+
+	AddToString(recolourPatch, (String){ .chars = "@PART[", .length = 7 });
+	AddToString(recolourPatch, *part.modules.name);
+	AddToString(recolourPatch, (String){ .chars = "]:FOR[", .length = 7 });
+	// TODO: make a way to set the ordering
+	AddToString(recolourPatch, (String){ .chars = "999_TU_Recolour_000", .length = 20 });
+	AddToString(recolourPatch, (String){ .chars = "]:NEEDS[TexturesUnlimited&", .length = 27 });
+	// TODO: make a way to set mod requirements
+	AddToString(recolourPatch, (String){ .chars = "<MODNAME>", .length = 10 });
+	AddToString(recolourPatch, (String){ .chars = "]\n{", .length = 4 });
+	
+	for (int index = 0; index < textureSwitches.length; index ++)
+	{
+		TextureSwitch textureSwitch = textureSwitches.textureSwitches[index];
+	
+		AddToString(recolourPatch, (String){ .chars = "\n	@MODULE[KSPTextureSwitch],", .length = 29 });
+		// add the index that indicates which texture switcher to edit
+		String indexString = (String){ .chars = NULL, .length = 0 };
+		IntToString(index, &indexString);
+		AddToString(recolourPatch, indexString);
+		free(indexString.chars);
+		
+		AddToString(recolourPatch, (String){ .chars = "\n	{\n		textureSet = ", .length = 20 });
+		AddToString(recolourPatch, textureSwitch.textureSets.textureSets[1].name);
+		AddToString(recolourPatch, (String){ .chars = "\n	}", .length = 4 });
+	}
+	
+	// add the recolour button
+	AddToString(recolourPatch, (String){ .chars = "\n	%MODULE[SSTURecolorGUI]\n	{\n		%name = SSTURecolorGUI\n	}\n}\n", .length = 60 });
+	
+	// add the recolour texture sets of each texture switch
+	for (int textureSwitchIndex = 0; textureSwitchIndex < textureSwitches.length; textureSwitchIndex ++)
+	{
+		TextureSwitch textureSwitch = textureSwitches.textureSwitches[textureSwitchIndex];
+		TextureSet textureSet = textureSwitch.textureSets.textureSets[1];
+		ModelMaterial material = *textureSet.material;
+		
+		AddToString(recolourPatch, (String){ .chars = "+KSP_TEXTURE_SET[", .length = 18 });
+		// TODO: make a way to set the default texture set to copy
+		AddToString(recolourPatch, (String){ .chars = "<RECOLOUR_TEXTURE_SET>", .length = 23 });
+		AddToString(recolourPatch, (String){ .chars = "]:NEEDS[TexturesUnlimited&", .length = 27 });
+		// TODO: make a way to set mod requirements
+		AddToString(recolourPatch, (String){ .chars = "<MODNAME>", .length = 10 });
+		AddToString(recolourPatch, (String){ .chars = "]\n{\n	@name = ", .length = 14 });
+		AddToString(recolourPatch, textureSet.name);
+		AddToString(recolourPatch, (String){ .chars = "\n	@MATERIAL\n	{", .length = 15 });
+		
+		// add the meshes of the material
+		for (int meshIndex = 0; meshIndex < material.meshIds.length; meshIndex ++)
+		{
+			int meshId = material.meshIds.ints[meshIndex];
+			ModelMesh * mesh = GetMeshWithId(part, meshId);
+			
+			if (mesh == NULL)
+			{
+				continue;
+			}
+			
+			AddToString(recolourPatch, (String){ .chars = "\n		mesh = ", .length = 11 });
+			AddToString(recolourPatch, mesh->name);
+		}
+		
+		AddToString(recolourPatch, (String){ .chars = "\n", .length = 2 });
+		
+		// add the propeties of the material to the patch
+		AddRecolourProperties(material, recolourPatch);
+		
+		AddToString(recolourPatch, (String){ .chars = "\n	}\n}\n", .length = 7 });
+	}
+}
+
+// gets a list of the relevant materials a part uses, relevance is indicated by material shader type
+void FindRelevantMaterials(PartInformation part, MaterialArray * relevantMaterials)
+{
+	ModelArray models = part.models;
 	
 	for (int modelIndex = 0; modelIndex < models.length; modelIndex ++)
 	{
@@ -2457,23 +2917,132 @@ void Recolour(PartInformation * part)
 		
 		for (int materialIndex = 0; materialIndex < model.materials.length; materialIndex ++)
 		{
+			// if the shader type indicates that this material is relevant add it to the list of relevant materials
 			ModelMaterial material = model.materials.materials[materialIndex];
-			ShaderType shaderType = GetShaderType(material, model);
-			printf("shader type: %d\n", shaderType);
+			ShaderType shaderType = GetShaderType(material);
+			//printf("shader type: %d\n", shaderType);
 			
 			if (shaderType == UNKNOWN || shaderType == IRRELEVANT)
 			{
 				continue;
 			}
 			
-			// if the shader type indicates that this mesh is relevant add it to the list of relevant materials
 			// check if its material is the same as any of the previous materials
+			if (IndexOfMaterial(*relevantMaterials, material) != -1)
+			{
+				// if this material is the same as a previous relevant material
+				printf("detected duplicate material: ");
+				BetterPrint(material.materialName);
+				continue;
+			}
 			
-			
-			
-			
+			// add the material to the list of relevant materials
+			relevantMaterials->length += 1;
+			relevantMaterials->materials = realloc(relevantMaterials->materials, sizeof(ModelMaterial) * relevantMaterials->length);
+			relevantMaterials->materials[relevantMaterials->length - 1] = material;
 		}
 	}
+	
+	printf("relevant materials: \n");
+	for (int index = 0; index < relevantMaterials->length; index ++)
+	{
+		ModelMaterial material = relevantMaterials->materials[index];
+		BetterPrint(material.materialName);
+	}
+}
+
+// create a texture switch and give it a default and recolour texture set for each relevant material
+void CreateTextureSets(MaterialArray relevantMaterials, TextureSwitchArray * textureSwitches)
+{
+	for (int index = 0; index < relevantMaterials.length; index ++)
+	{
+		// the material to be remade in a texture set
+		ModelMaterial * material = &relevantMaterials.materials[index];
+		// the texture switch that will switch between the default and recolour texture sets
+		TextureSwitch * textureSwitch = &textureSwitches->textureSwitches[index];
+		*textureSwitch = (TextureSwitch){ .name = (String){ .chars = "<NAME>", .length = 7 }, .currentTextureSet = NULL, .textureSets = (TextureSetArray){ .textureSets = NULL, .length = 0 }};
+		// TODO: give the texture switches better names
+		
+		// the texture sets that the texture switch has access to, should be empty
+		TextureSetArray * textureSets = &textureSwitch->textureSets;
+		*textureSets = (TextureSetArray){ .length = 2, .textureSets = malloc(sizeof(TextureSet) * 2)};
+		
+		// add the default texture set to recreate the material
+		TextureSet * defaultTextureSet = &textureSets->textureSets[0];
+		*defaultTextureSet = (TextureSet){ .name = (String){ .chars = NULL , .length = 0 }, .material = NULL };
+		// set the defualt texture set's name to be the name of the material + default
+		String defaultString = (String){ .chars = "_default", .length = 9 };
+		ConcatenateStrings(material->materialName, defaultString, &defaultTextureSet->name);
+		// set the material that will be replicated
+		defaultTextureSet->material = material;
+		
+		// add the recolour texture set
+		TextureSet * recolourTextureSet = &textureSets->textureSets[1];
+		*recolourTextureSet = (TextureSet){ .name = (String){ .chars = NULL , .length = 0 }, .material = NULL };
+		// set the recolour texture set's name to be the name of the material + recolour
+		String recolourString = (String){ .chars = "_recolour", .length = 10 };
+		ConcatenateStrings(material->materialName, recolourString, &recolourTextureSet->name);
+		// the recolour texture set needs to know the default material so it knows what textures are available to use
+		recolourTextureSet->material = material;
+		
+		// set the texture switch to select the default texture set by default
+		textureSwitch->currentTextureSet = defaultTextureSet;
+	}
+	
+//	printf("texture sets: \n");
+//	for (int index = 0; index < textureSwitches->length; index ++)
+//	{
+//		TextureSwitch textureSwitch = textureSwitches->textureSwitches[index];
+//		BetterPrint(textureSwitch.textureSets.textureSets[0].name);
+//	}
+}
+
+// the two strings represent what is in the two .cfg files that make a recolour
+typedef struct RecolourConfig
+{
+	String defaultConfig;
+	String recolourConfig;
+}
+RecolourConfig;
+
+// returns a recolour config for a part
+void Recolour(PartInformation * part, RecolourConfig * recolour)
+{
+	// find which materials are relevant by checking their shader type
+	// for each material create a default texture set that recreates that material
+	// and create a texture switcher to switch between these and recolour texture sets
+	
+	// TODO: if the part has a set of variants that can be replicated with the stock variants system recolourable variants can be used
+	// otherwise a texture switcher must be made for each relevant material
+	// materials may also be duplicated if multiple of the same mesh is used in a model
+	
+	// TODO: also check if multiple identically named meshes use different materials
+	// if so: uh oh
+	
+	// find relevant materials
+	MaterialArray relevantMaterials = (MaterialArray){ .materials = NULL, .length = 0 };
+	FindRelevantMaterials(*part, &relevantMaterials);
+	
+	// we now have a list of the materials that need to be remade with texture sets
+	// create a texture switch for each of these materials and give each of them a default texture set that will recreate the material and a recolour texture set
+	TextureSwitchArray textureSwitches = (TextureSwitchArray){ .length = relevantMaterials.length, .textureSwitches = malloc(sizeof(TextureSwitch) * relevantMaterials.length)};
+	CreateTextureSets(relevantMaterials, &textureSwitches);
+	
+	// clear the old default config, if any
+	recolour->defaultConfig = (String){ .chars = realloc(recolour->defaultConfig.chars, sizeof(char) * 0), .length = 0 };
+	// create a default config patch that implements the texture switches
+	CreateDefaultPatch(*part, textureSwitches, &recolour->defaultConfig);
+	
+	// clear the old recolour config, if any
+	recolour->recolourConfig = (String){ .chars = realloc(recolour->recolourConfig.chars, sizeof(char) * 0), .length = 0 };
+	// create a recolour patch that implements the recolour texture sets
+	CreateRecolourPatch(*part, textureSwitches, &recolour->recolourConfig);
+	
+	printf("default patch:\n%s\n", recolour->defaultConfig.chars);
+	printf("recolour patch:\n%s\n", recolour->recolourConfig.chars);
+	
+	free(textureSwitches.textureSwitches);
+	free(relevantMaterials.materials);
 }
 
 //█▀▄ █▀█ ▄▀█ █░█░█ █ █▄░█ █▀▀
@@ -2873,13 +3442,13 @@ bool ModuleIsRelevant(Module module)
 }
 
 // draws a module
-void DrawModule(Module module, UiStatus ui)
+void DrawModule(Module module, bool onlyRelevantModules)
 {
 	// draw the modules type
 	CLAY_TEXT(MyToClayString(module.type), { .textColor = textColour, .fontSize = fontSize, .fontId = 0 });
 	
 	// only draw the properties of relevant modules
-	if (ui.onlyRelevantModules == true && ModuleIsRelevant(module) == false)
+	if (onlyRelevantModules == true && ModuleIsRelevant(module) == false)
 	{
 		return;
 	}
@@ -2899,7 +3468,7 @@ void DrawModule(Module module, UiStatus ui)
 }
 
 // draws the module tree, depth first
-void DrawModuleTree(Module module, UiStatus ui)
+void DrawModuleTree(Module module, bool onlyRelevantModules)
 {
 	// draw the module,
 	// create a box below the module to put children in
@@ -2917,7 +3486,7 @@ void DrawModuleTree(Module module, UiStatus ui)
 		CLAY_AUTO_ID({ .cornerRadius = CLAY_CORNER_RADIUS(cornerRadius), .backgroundColor = RaylibToClayColour(WHITE), .layout = { .layoutDirection = CLAY_TOP_TO_BOTTOM, .padding = CLAY_PADDING_ALL(padding) } })
 		{
 			// draw this module
-			DrawModule(module, ui);
+			DrawModule(module, onlyRelevantModules);
 		}
 	}
 	
@@ -2938,13 +3507,13 @@ void DrawModuleTree(Module module, UiStatus ui)
 			for (int index = 0; index < module.children.length; index ++)
 			{
 				// draw the childen
-				DrawModuleTree(module.children.modules[index], ui);
+				DrawModuleTree(module.children.modules[index], onlyRelevantModules);
 			}
 		}
 	}
 }
 
-void DrawPartModules(Module module, UiStatus ui)
+void DrawPartModules(Module module, bool onlyRelevantModules)
 {
 	// create a box to store the horizontal scroll bar
 	CLAY_AUTO_ID({ .layout = { .layoutDirection = CLAY_TOP_TO_BOTTOM, .sizing = { .height = CLAY_SIZING_GROW(), .width = CLAY_SIZING_GROW() } } })
@@ -2953,7 +3522,7 @@ void DrawPartModules(Module module, UiStatus ui)
 		CLAY(CLAY_ID("ModuleTree"), { .layout = { .layoutDirection = CLAY_TOP_TO_BOTTOM, .sizing = { .width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_GROW() } }, .clip = { .vertical = true, .horizontal = true, .childOffset = Clay_GetScrollOffset() } })
 		{
 			// draw the module tree, starting at this module
-			DrawModuleTree(module, ui);
+			DrawModuleTree(module, onlyRelevantModules);
 		}
 		
 		Clay_String moduleTreeName = MyToClayString((String){ .chars = "ModuleTree", .length = 11 });
@@ -3005,7 +3574,7 @@ bool MaterialPropertyIsRelevant(KeyValue property)
 }
 
 // draws a single material
-void DrawMaterial(ModelMaterial material, MuModel model, UiStatus ui)
+void DrawMaterial(ModelMaterial material, PartInformation part, bool onlyRelevantMaterials)
 {
 	// settings
 	Clay_Color meshHovered = RaylibToClayColour(SKYBLUE);
@@ -3024,14 +3593,14 @@ void DrawMaterial(ModelMaterial material, MuModel model, UiStatus ui)
 	CLAY_TEXT(MyToClayString((String){ .chars = "Meshes that use this material:", .length = 31 }), { .textColor = textColour, .fontSize = fontSize, .fontId = 0});
 	CLAY_AUTO_ID({ .layout = { .padding = { .left = 3 * padding, .right = 0, .top = 0, .bottom = 0 }, .layoutDirection = CLAY_TOP_TO_BOTTOM, .sizing = { .height = CLAY_SIZING_FIT(), .width = CLAY_SIZING_GROW() } } })
 	{
-		for (int index = 0; index < material.meshIndexes.length; index ++)
+		for (int index = 0; index < material.meshIds.length; index ++)
 		{
 			// highlight the mesh if it is hovered over
 			CLAY_AUTO_ID({ .cornerRadius = CLAY_CORNER_RADIUS(2), .backgroundColor = Clay_Hovered() ? meshHovered : meshDefault , .layout = { .sizing = { .height = CLAY_SIZING_GROW(), .width = CLAY_SIZING_GROW() } } })
 			{
 				// get the name of the mesh
-				int meshIndex = material.meshIndexes.ints[index];
-				ModelMesh mesh = model.meshes.meshes[meshIndex];
+				int meshId = material.meshIds.ints[index];
+				ModelMesh mesh = *GetMeshWithId(part, meshId);
 				String meshName = mesh.name;
 				
 				// copy the mesh name to the clipboard if it is clicked
@@ -3048,17 +3617,16 @@ void DrawMaterial(ModelMaterial material, MuModel model, UiStatus ui)
 	{
 		KeyValue property = material.properties.keysValues[index];
 		
-		if (ui.onlyRelevantMaterials == true && MaterialPropertyIsRelevant(property) == false)
+		if (onlyRelevantMaterials == true && MaterialPropertyIsRelevant(property) == false)
 		{
 			continue;
 		}
-		
 		DrawPropertyValue(property.key, property.value, (String){ .chars = " : ", .length = 4 }, -1);
 	}
 }
 
 // draws the materials of a model
-void DrawMaterials(MuModel model, UiStatus ui)
+void DrawMaterials(MuModel model, PartInformation part, bool onlyRelevantMaterials)
 {
 	CLAY_AUTO_ID({ .cornerRadius = CLAY_CORNER_RADIUS(cornerRadius), .backgroundColor = RaylibToClayColour(WHITE), .layout = { .layoutDirection = CLAY_TOP_TO_BOTTOM, .sizing = { .width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_FIT() }, .padding = CLAY_PADDING_ALL(padding), .childGap = padding } })
 	{
@@ -3068,13 +3636,13 @@ void DrawMaterials(MuModel model, UiStatus ui)
 		for (int index = 0; index < model.materials.length; index ++)
 		{
 			ModelMaterial material = model.materials.materials[index];
-			DrawMaterial(material, model, ui);
+			DrawMaterial(material, part, onlyRelevantMaterials);
 		}
 	}
 }
 
 // draws an array of models
-void DrawModels(ModelArray models, UiStatus ui)
+void DrawModels(ModelArray models, PartInformation part, bool onlyRelevantMaterials)
 {
 	// create a box to store the horizontal scroll bar
 	CLAY_AUTO_ID({ .layout = { .layoutDirection = CLAY_TOP_TO_BOTTOM, .sizing = { .height = CLAY_SIZING_GROW(), .width = CLAY_SIZING_GROW() } } })
@@ -3086,18 +3654,16 @@ void DrawModels(ModelArray models, UiStatus ui)
 			for (int index = 0; index < models.length; index ++)
 			{
 				MuModel model = models.models[index];
-				DrawMaterials(model, ui);
+				DrawMaterials(model, part, onlyRelevantMaterials);
 			}
 		}
 		
 		Clay_String modelsName = MyToClayString((String){ .chars = "Models", .length = 7 });
 		DrawHorizontalScrollbar(Clay_GetElementId(modelsName));
-		//free((void *)modelsName.chars);
 	}
 	
 	Clay_String modelsName = MyToClayString((String){ .chars = "Models", .length = 7 });
 	DrawVerticalScrollbar(Clay_GetElementId(modelsName));
-	//free((void *)modelsName.chars);
 }
 
 // draw a toggleable button
@@ -3144,21 +3710,15 @@ void DrawButton(String textureName, int size)
 }
 
 // draws the navbar and checks which buttons are pressed
-void DrawNavbar(UiStatus * ui, PartInformation * part)
+void DrawNavbar(bool * onlyRelevantMaterials, bool * onlyRelevantModules, PartInformation * part, RecolourConfig * recolour)
 {
 	const int buttonSize = 100;
 	CLAY(CLAY_ID("NavBar"), { .layout = { .childGap = padding, .padding = CLAY_PADDING_ALL(padding), .sizing = { .width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_FIT() } }, .backgroundColor = RaylibToClayColour(RED) })
 	{
-		// button the opens and closes the file browser
-		DrawToggleButton((String){ .chars = "FileBrowserClose.png", .length = 21 }, (String){ .chars = "FileBrowserOpen.png", .length = 20 }, &ui->fileBrowserOpen, buttonSize);
-		// button that opens and closes the module tree
-		DrawToggleButton((String){ .chars = "ModuleTreeClose.png", .length = 20 }, (String){ .chars = "ModuleTreeOpen.png", .length = 19 }, &ui->moduleTreeOpen, buttonSize);
-		// button that opens and closes the model list
-		DrawToggleButton((String){ .chars = "ModelsListClose.png", .length = 20 }, (String){ .chars = "ModelsListOpen.png", .length = 19 }, &ui->modelListOpen, buttonSize);
 		// buttons that turns on and off relevant modules
-		DrawToggleButton((String){ .chars = "ModuleTreeRelevantOn.png", .length = 25 }, (String){ .chars = "ModuleTreeRelevantOff.png", .length = 26 }, &ui->onlyRelevantModules, buttonSize);
+		DrawToggleButton((String){ .chars = "ModuleTreeRelevantOn.png", .length = 25 }, (String){ .chars = "ModuleTreeRelevantOff.png", .length = 26 }, onlyRelevantModules, buttonSize);
 		// buttons that turns on and off relevant materials
-		DrawToggleButton((String){ .chars = "ModelsListRelevantOn.png", .length = 25 }, (String){ .chars = "ModelsListRelevantOff.png", .length = 26 }, &ui->onlyRelevantMaterials, buttonSize);
+		DrawToggleButton((String){ .chars = "ModelsListRelevantOn.png", .length = 25 }, (String){ .chars = "ModelsListRelevantOff.png", .length = 26 }, onlyRelevantMaterials, buttonSize);
 		// button to try and create a recolour
 		CLAY_AUTO_ID({ .layout = { .sizing = { .width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_GROW() } } })
 		{
@@ -3166,10 +3726,75 @@ void DrawNavbar(UiStatus * ui, PartInformation * part)
 			// if the button is clicked try and create a recolour for the part
 			if (Clay_Hovered() == true && IsMouseButtonPressed(0) == true)
 			{
-				Recolour(part);
+				Recolour(part, recolour);
 			}
 		}
 	}
+}
+
+void DrawConfig(String config)
+{
+	if (config.length == 0)
+	{
+		return;
+	}
+	
+	const int buttonSize = 100;
+	CLAY_AUTO_ID({ .cornerRadius = cornerRadius, .layout = { .padding = CLAY_PADDING_ALL(padding), .layoutDirection = CLAY_TOP_TO_BOTTOM, .sizing = { .width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_GROW() } }, .backgroundColor = RaylibToClayColour(WHITE) })
+	{
+		CLAY_AUTO_ID({})
+		{
+			DrawButton((String){ .chars = "Copy.png", .length = 9 }, buttonSize);
+			// if the button is clicked copy the config into the clipboard
+			CopyIfClicked(config);
+		}
+	
+		int lineStart = 0;
+		int lineEnd = 0;
+		
+		// draw each line of text in the config
+		while (true)
+		{
+			lineStart = lineEnd;
+			lineEnd = IndexOfChar(config, lineStart + 1, '\n');
+			
+			// if there are no more lines
+			if (lineEnd == -1)
+			{
+				break;
+			}
+			
+			String line = ExtractString(config, lineStart + 1, lineEnd - 1);
+			
+			CLAY_TEXT(MyToClayString(line), { .textColor = textColour, .fontSize = fontSize, .fontId = 0 });
+		}
+	}
+}
+
+void DrawRecolour(RecolourConfig recolour)
+{
+	// create a box to store the horizontal scroll bar
+	CLAY_AUTO_ID({ .layout = { .layoutDirection = CLAY_TOP_TO_BOTTOM, .sizing = { .height = CLAY_SIZING_GROW(), .width = CLAY_SIZING_GROW() } } })
+	{
+		// a scrolling box to put the configs in
+		CLAY(CLAY_ID("Recolour"), { .layout = { .layoutDirection = CLAY_TOP_TO_BOTTOM, .sizing = { .width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_GROW() }, .padding = CLAY_PADDING_ALL(padding), .childGap = padding }, .clip = { .vertical = true, .horizontal = true, .childOffset = Clay_GetScrollOffset() } })
+		{
+			// box to change to left to right layout
+			CLAY_AUTO_ID({ .layout = { .layoutDirection = CLAY_LEFT_TO_RIGHT, .childGap = padding, .sizing = { .width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_GROW() } } })
+			{
+				// draw the default config
+				DrawConfig(recolour.defaultConfig);
+				// draw the recolour config
+				DrawConfig(recolour.recolourConfig);
+			}
+		}
+		
+		Clay_String modelsName = MyToClayString((String){ .chars = "Recolour", .length = 9 });
+		DrawHorizontalScrollbar(Clay_GetElementId(modelsName));
+	}
+	
+	Clay_String modelsName = MyToClayString((String){ .chars = "Recolour", .length = 9 });
+	DrawVerticalScrollbar(Clay_GetElementId(modelsName));
 }
 
 //█▀▄▀█ ▄▀█ █ █▄░█
@@ -3178,7 +3803,7 @@ void DrawNavbar(UiStatus * ui, PartInformation * part)
 int main(void)
 {
 	//-------------------------------------------------------------------------------------- Initialization
-	int screenWidth = 1080;
+	int screenWidth = 1440;
 	int screenHeight = 800;
 	const char * title = "Recolour maker";
 	
@@ -3203,11 +3828,15 @@ int main(void)
 	// the currently selected part
 	PartInformation selectedPart = { 0 };
 	
+	// the current recolour
+	RecolourConfig recolour = (RecolourConfig){ .defaultConfig = (String){ .chars = NULL, .length = 0 }, .recolourConfig = (String){ .chars = NULL, .length = 0 } };
+	
 	// is debug mode on
 	bool debug = false;
 	
-	// what windows are open
-	UiStatus ui = (UiStatus){ .fileBrowserOpen = true, .moduleTreeOpen = true, .onlyRelevantModules = true, .modelListOpen = true, .onlyRelevantMaterials = false };
+	// ui options
+	bool onlyRelevantModules = false;
+	bool onlyRelevantMaterials = false;
 	
 	SetTargetFPS(60); // target framerate
 	SetExitKey(KEY_BACKSPACE); // key to close the game
@@ -3253,37 +3882,34 @@ int main(void)
 		CLAY(CLAY_ID("MainWindow"), { .layout = { .layoutDirection = CLAY_TOP_TO_BOTTOM, .sizing = { .width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_GROW() } } })
 		{
 			// buttons to controll the program
-			DrawNavbar(&ui, &selectedPart);
+			DrawNavbar(&onlyRelevantMaterials, &onlyRelevantModules, &selectedPart, &recolour);
 			
 			// holds the boxes that hold the functions of the program
 			CLAY(CLAY_ID("Content"), { .layout = { .layoutDirection = CLAY_LEFT_TO_RIGHT, .sizing = { .width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_GROW() } } })
 			{
-				if (ui.fileBrowserOpen == true)
+				// the box that holds the directory navigator
+				CLAY(CLAY_ID("NavigatorBox"), { .layout = { .sizing = { .width = CLAY_SIZING_FIT(), .height = CLAY_SIZING_GROW() } } })
 				{
-					// the box that holds the directory navigator
-					CLAY(CLAY_ID("NavigatorBox"), { .layout = { .sizing = { .width = CLAY_SIZING_FIT(), .height = CLAY_SIZING_GROW() } } })
-					{
-						// draw the directory navigator and handle clicking on directories
-						DirectoryNavigator(&selectedPart);
-					}
+					// draw the directory navigator and handle clicking on directories
+					DirectoryNavigator(&selectedPart);
 				}
-				if (ui.moduleTreeOpen == true)
+				// box that holds the part's module tree
+				CLAY(CLAY_ID("ModuleTreeBox"), { .layout = { .sizing = { .width = CLAY_SIZING_FIT(), .height = CLAY_SIZING_GROW() } } })
 				{
-					// box that holds the part's module tree
-					CLAY(CLAY_ID("ModuleTreeBox"), { .layout = { .sizing = { .width = CLAY_SIZING_FIT(), .height = CLAY_SIZING_GROW() } } })
-					{
-						// draw the modules
-						DrawPartModules(selectedPart.modules, ui);
-					}
+					// draw the modules
+					DrawPartModules(selectedPart.modules, onlyRelevantModules);
 				}
-				if (ui.modelListOpen == true)
+				// box that holds the list of the part's models
+				CLAY(CLAY_ID("ModelListBox"), { .layout = { .sizing = { .width = CLAY_SIZING_FIT(), .height = CLAY_SIZING_GROW() } } })
 				{
-					// box that holds the list of the part's models
-					CLAY(CLAY_ID("ModelListBox"), { .layout = { .sizing = { .width = CLAY_SIZING_FIT(), .height = CLAY_SIZING_GROW() } } })
-					{
-						// draw the models
-						DrawModels(selectedPart.models, ui);
-					}
+					// draw the models
+					DrawModels(selectedPart.models, selectedPart, onlyRelevantMaterials);
+				}
+				// box that holds the recolour configs
+				CLAY(CLAY_ID("RecolourBox"), { .layout = { .sizing = { .width = CLAY_SIZING_FIT(), .height = CLAY_SIZING_GROW() } } })
+				{
+					// draw the recolour config
+					DrawRecolour(recolour);
 				}
 			}
 		}
