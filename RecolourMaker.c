@@ -569,6 +569,11 @@ void ResizeString(String * string, int length)
 	string->length = length;
 	string->chars = realloc(string->chars, sizeof(char) * string->length);
 	
+	if (length == 0)
+	{
+		string->chars = NULL;
+	}
+	
 	if (oldLength >= string->length)
 	{
 		// if the string has been shortened or stayed the same size
@@ -689,6 +694,7 @@ bool StringsEqual(String a, String b)
 {
 	if (a.length != b.length)
 	{
+		//printf("length: %d != %d\n", a.length, b.length);
 		return false;
 	}
 	
@@ -696,6 +702,7 @@ bool StringsEqual(String a, String b)
 	{
 		if (a.chars[charIndex] != b.chars[charIndex])
 		{
+			//printf("chars: %c != %c\n", a.chars[charIndex], b.chars[charIndex]);
 			return false;
 		}
 	}
@@ -741,30 +748,33 @@ bool KeyValueEqualToAny(KeyValue a, KeyValueArray keysValues)
 }
 
 // extracts a string from a larger string
-String ExtractString(String extractee, int startIndex, int endIndex)
+void ExtractString(String extractee, String * extracted, int startIndex, int endIndex)
 {
+	// clear extracted
+	ResizeString(extracted, 0);
+	
 	if (startIndex < 0)
 	{
 		//printf("ERROR: start index: %d was less than zero\n", startIndex);
-		return (String){ 0 };
+		return;
 	}
 	
 	if (endIndex <= startIndex)
 	{
 		//printf("ERROR: end index: %d was less than or equal to start index: %d\n", endIndex, startIndex);
-		return (String){ 0 };
+		return;
 	}
 	
 	if (startIndex > extractee.length - 1)
 	{
 		//printf("ERROR: start index: %d was after extractee end\n", startIndex);
-		return (String){ 0 };
+		return;
 	}
 	
 	if (endIndex > extractee.length - 1)
 	{
 		//printf("ERROR: end index: %d was after extractee end\n", endIndex);
-		return (String){ 0 };
+		return;
 	}
 	
 	//	   5	 11
@@ -772,13 +782,11 @@ String ExtractString(String extractee, int startIndex, int endIndex)
 	//extractee.string
 	
 	// create a new string to put the extracted chars into
-	String extracted = { 0 };
 	int extractedLength = endIndex - startIndex + 1;
-	ResizeString(&extracted, extractedLength);
+	ResizeString(extracted, extractedLength);
 	
 	// copy into the extracted string from the extractee
-	memcpy(extracted.chars, &extractee.chars[startIndex], sizeof(char) * extracted.length);
-	return extracted;
+	memcpy(extracted->chars, &extractee.chars[startIndex], sizeof(char) * extracted->length);
 }
 
 // adds the second string to the end of the first one
@@ -908,8 +916,14 @@ int IndexOfSubstring(String string, int startIndex, String subString)
 // returns a string that is no more than length long
 void ClampStringLength(String string, String * newString, int maxLength)
 {
-	// copy the string into the new one
 	ResizeString(newString, string.length);
+	
+	if (newString->length < 1)
+	{
+		return;
+	}
+	
+	// copy the string into the new one
 	memcpy(newString->chars, string.chars, sizeof(char) * string.length);
 	
 	// if the string is short enough or maxLength is -1 (ignore max length)
@@ -1282,7 +1296,8 @@ void ParseModuleType(String configFile, int bracketIndex, Module * module)
 	// see if there is a type between /n and {
 	// V		V
 	//\n..TYPE..{
-	String type = ExtractString(configFile, lineStart + 1, bracketIndex - 1);
+	String type = (String){ .chars = NULL, .length = 0 };
+	ExtractString(configFile, &type, lineStart + 1, bracketIndex - 1);
 	TrimWhitespace(&type);
 	
 	if (IsValidType(type) == true)
@@ -1311,7 +1326,7 @@ void ParseModuleType(String configFile, int bracketIndex, Module * module)
 	// see if there is a type on the previous line
 	// V		  V
 	//\n...TYPE...\n
-	type = ExtractString(configFile, previousLineStart + 1, previousLineEnd - 1);
+	ExtractString(configFile, &type, previousLineStart + 1, previousLineEnd - 1);
 	TrimWhitespace(&type);
 	
 //	printf("type candidate: ");
@@ -1604,7 +1619,13 @@ void TrimUnityEngineTexture2D(String * string)
 	int endIndex = string->length - 1;
 	int startIndex = endIndex - unityEngineTexture2D.length + 1;
 	
-	String stringEnd = ExtractString(*string, startIndex, endIndex);
+	if (startIndex < 0)
+	{
+		return;
+	}
+	
+	String stringEnd = (String){ .chars = NULL, .length = 0 };
+	ExtractString(*string, &stringEnd, startIndex, endIndex);
 	
 //	printf("string ends in: ");
 //	BetterPrint(stringEnd);
@@ -1617,6 +1638,8 @@ void TrimUnityEngineTexture2D(String * string)
 //		printf("string trimmed to: ");
 //		BetterPrint(*string);
 	}
+	
+	free(stringEnd.chars);
 }
 
 // returns the property and its value of a line in a modelData file
@@ -1628,7 +1651,7 @@ KeyValue ParseMeshProperty(String propertyLine)
 	
 	if (colonIndex == -1)
 	{
-		printf("no : found\n");
+		//printf("no : found\n");
 		return (KeyValue){ 0 };
 	}
 	
@@ -1716,13 +1739,15 @@ void MaterialPropertiesFromMesh(ModelMaterial * material, String modelData, int 
 	int sixthNewLine = IndexOfChar(modelData, fifthNewLine + 1, '\n');
 	int seventhNewLine = IndexOfChar(modelData, sixthNewLine + 1, '\n');
 	
-	String thirdLine = ExtractString(modelData, secondNewLine + 1, thirdNewLine - 1);
-	String fifthLine = ExtractString(modelData, fourthNewLine + 1, fifthNewLine - 1);
-	String sixthLine = ExtractString(modelData, fifthNewLine + 1, sixthNewLine - 1);
-	String seventhLine = ExtractString(modelData, sixthNewLine + 1, seventhNewLine - 1);
+	String thirdLine = (String){ .chars = NULL, .length = 0 };
+	ExtractString(modelData, &thirdLine, secondNewLine + 1, thirdNewLine - 1);
+	String fifthLine = (String){ .chars = NULL, .length = 0 };
+	ExtractString(modelData, &fifthLine, fourthNewLine + 1, fifthNewLine - 1);
+	String sixthLine = (String){ .chars = NULL, .length = 0 };
+	ExtractString(modelData, &sixthLine, fifthNewLine + 1, sixthNewLine - 1);
+	String seventhLine = (String){ .chars = NULL, .length = 0 };
+	ExtractString(modelData, &seventhLine, sixthNewLine + 1, seventhNewLine - 1);
 	
-//	printf("second line: ");
-//	BetterPrint(secondLine);
 //	printf("third line: ");
 //	BetterPrint(thirdLine);
 //	printf("fifth line: ");
@@ -1737,6 +1762,11 @@ void MaterialPropertiesFromMesh(ModelMaterial * material, String modelData, int 
 	material->materialName = ParseMeshProperty(sixthLine).value;
 	material->shaderName = ParseMeshProperty(seventhLine).value;
 	
+	free(thirdLine.chars);
+	free(fifthLine.chars);
+	free(sixthLine.chars);
+	free(seventhLine.chars);
+	
 //	BetterPrint(material->materialName);
 //	BetterPrint(material->shaderName);
 	
@@ -1748,7 +1778,8 @@ void MaterialPropertiesFromMesh(ModelMaterial * material, String modelData, int 
 		lineStart = lineEnd;
 		lineEnd = IndexOfChar(modelData, lineStart + 1, '\n');
 		
-		String line = ExtractString(modelData, lineStart + 1, lineEnd - 1);
+		String line = (String){ .chars = NULL, .length = 0 };
+		ExtractString(modelData, &line, lineStart + 1, lineEnd - 1);
 		TrimWhitespace(&line);
 		// printf("line: ");
 		// BetterPrint(line);
@@ -1762,6 +1793,7 @@ void MaterialPropertiesFromMesh(ModelMaterial * material, String modelData, int 
 		}
 		
 		AddProperty(ParseMeshProperty(line), material);
+		free(line.chars);
 	}
 	
 	return;
@@ -3393,6 +3425,116 @@ void SetSelectedDirectory(String ** directory)
 	*directory = initial;
 }
 
+typedef enum DirectoryType
+{
+	FOLDER,
+	CONFIG,
+	TEXTURE,
+	MODEL,
+	TEXT,
+	DOT,
+	DOTDOT,
+	OTHER
+}
+DirectoryType;
+
+DirectoryType FindDirectoryType(String directoryName)
+{
+	if (IsDot(directoryName) == true)
+	{
+		return DOT;
+	}
+	
+	if (IsDotDot(directoryName) == true)
+	{
+		return DOTDOT;
+	}
+	
+//	printf("directory name: ");
+//	BetterPrint(directoryName);
+//	printf("directory length: %d\n", directoryName.length);
+	
+	// find if the directory name has a .
+	int dotIndex = IndexOfChar(directoryName, 0, '.');
+	
+	if (dotIndex == -1)
+	{
+		return FOLDER;
+	}
+	
+	// extract the directories extenstion
+	String extension = (String){ .chars = NULL, .length = 0 };
+	ExtractString(directoryName, &extension, dotIndex, directoryName.length - 1);
+	
+	// ......V... 6
+	// cheese.png 10
+//	printf("directory extension: ");
+//	BetterPrint(extension);
+	
+	// config file extension
+	String cfg = (String){ .chars = ".cfg", .length = 5 };
+	// ksp's model format
+	String mu = (String){ .chars = ".mu", .length = 4 };
+	// text file formats
+	String txt = (String){ .chars = ".txt", .length = 5 };
+	String md = (String){ .chars = ".md", .length = 4 };
+	// texture file formats
+	String png = (String){ .chars = ".png", .length = 5 };
+	String dds = (String){ .chars = ".dds", .length = 5 };
+	
+	if (StringsEqual(extension, cfg) == true)
+	{
+		return CONFIG;
+	}
+	else if (StringsEqual(extension, mu) == true)
+	{
+		return MODEL;
+	}
+	else if (StringsEqual(extension, png) == true || StringsEqual(extension, dds) == true)
+	{
+		return TEXTURE;
+	}
+	else if (StringsEqual(extension, txt) == true || StringsEqual(extension, md) == true)
+	{
+		return TEXT;
+	}
+	
+	free(extension.chars);
+	return OTHER;
+}
+
+void DrawDirectoryType(DirectoryType type)
+{
+	if (type == FOLDER)
+	{
+		DrawImage((String){ .chars = "Folder.png", .length = 11 });
+	}
+	else if (type == CONFIG)
+	{
+		DrawImage((String){ .chars = "FileConfig.png", .length = 15 });
+	}
+	else if (type == TEXT)
+	{
+		DrawImage((String){ .chars = "FileText.png", .length = 13 });
+	}
+	else if (type == TEXTURE)
+	{
+		DrawImage((String){ .chars = "FileTexture.png", .length = 16 });
+	}
+	else if (type == MODEL)
+	{
+		DrawImage((String){ .chars = "FileModel.png", .length = 14 });
+	}
+	else if (type == DOTDOT)
+	{
+		DrawImage((String){ .chars = "FileExit.png", .length = 13 });
+	}
+	else
+	{
+		DrawImage((String){ .chars = "FileUnknown.png", .length = 16 });
+	}
+}
+
 // draw the enteries of the selected directory and manage what happens if a directory is clicked
 void DirectoryNavigator(PartInformation * part)
 {
@@ -3406,8 +3548,11 @@ void DirectoryNavigator(PartInformation * part)
 	}
 
 	// settings
-	Clay_Color directoryBackground = RaylibToClayColour(WHITE);
-	Clay_Color directoryHovered = RaylibToClayColour(SKYBLUE);
+	Clay_Color directoryBackground = RaylibToClayColour(BLANK);
+	Clay_Color directoryBackgroundHovered = RaylibToClayColour(DARKBLUE);
+	Clay_Color directoryText = textColour;
+	Clay_Color directoryTextHovered = RaylibToClayColour(WHITE);
+	int directoryNavigatorWidth = 200;
 	
 	DIR * selectedDirectory = opendir(selectedDirectoryPath->chars);
 	if (selectedDirectory == NULL)
@@ -3427,21 +3572,25 @@ void DirectoryNavigator(PartInformation * part)
 		CLAY_AUTO_ID({ .layout = { .layoutDirection = CLAY_TOP_TO_BOTTOM, .sizing = { .height = CLAY_SIZING_GROW(), .width = CLAY_SIZING_GROW() } } })
 		{
 			// create a scrolling box to display the directories entries in
-			CLAY(CLAY_ID("DirectoryNavigator"), { .layout = { .sizing = { .width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_GROW() }, .padding = CLAY_PADDING_ALL(padding), .childGap = padding, .layoutDirection = CLAY_TOP_TO_BOTTOM}, .clip = { .vertical = true, .horizontal = true, .childOffset = Clay_GetScrollOffset() } })
+			CLAY(CLAY_ID("DirectoryNavigator"), { .layout = { .sizing = { .width = CLAY_SIZING_FIXED(directoryNavigatorWidth), .height = CLAY_SIZING_GROW() }, .padding = CLAY_PADDING_ALL(padding), .childGap = padding, .layoutDirection = CLAY_TOP_TO_BOTTOM}, .clip = { .vertical = true, .horizontal = true, .childOffset = Clay_GetScrollOffset() } })
 			{
 				// draw all the entries in the directory
 				while (entry != NULL)
 				{
 					// draw a button with the name of the directory entry
-					CLAY_AUTO_ID({ .cornerRadius = CLAY_CORNER_RADIUS(cornerRadius), .backgroundColor = Clay_Hovered() ? directoryHovered : directoryBackground, .layout = { .sizing = { .width = CLAY_SIZING_FIT(), .height = CLAY_SIZING_FIT() }, .padding = CLAY_PADDING_ALL(padding) } })
+					CLAY_AUTO_ID({ .backgroundColor = Clay_Hovered() ? directoryBackgroundHovered : directoryBackground, .layout = { .sizing = { .width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_FIT() } } })
 					{
 						// copy the directories name out of the dirent and add a null terminator
 						String directoryName = (String){ .length = strlen(entry->d_name), .chars = malloc(strlen(entry->d_name)) };
 						memcpy(directoryName.chars, entry->d_name, sizeof(char) * directoryName.length);
 						GarunteeNullTerminator(&directoryName);
 						
+						// find the type of the directory from its name
+						DirectoryType directoryType = FindDirectoryType(directoryName);
+						DrawDirectoryType(directoryType);
+						
 						// draw the name of the directory
-						CLAY_TEXT(MyToClayString(directoryName), { .textColor = textColour, .fontSize = fontSize, .fontId = 0 });
+						CLAY_TEXT(MyToClayString(directoryName), { .textColor = Clay_Hovered() ? directoryTextHovered : directoryText, .fontSize = fontSize, .fontId = 0 });
 						
 						// if this directory has been clicked on navigate to this directory
 						if (Clay_Hovered() && IsMouseButtonPressed(0))
@@ -3849,9 +3998,11 @@ void DrawConfig(String config)
 				break;
 			}
 			
-			String line = ExtractString(config, lineStart + 1, lineEnd - 1);
+			String line = (String){ .chars = NULL, .length = 0 };
+			ExtractString(config, &line, lineStart + 1, lineEnd - 1);
 			
 			CLAY_TEXT(MyToClayString(line), { .textColor = textColour, .fontSize = fontSize, .fontId = 0 });
+			free(line.chars);
 		}
 	}
 }

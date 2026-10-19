@@ -4,8 +4,6 @@
 CMakeFiles/RecolourMaker.dir/RecolourMaker.c.o: RecolourMaker.c \
   clay.h \
   clay_renderer_raylib.c \
-  dds.c \
-  dds.h \
   /usr/include/alloca.h \
   /usr/include/asm-generic/errno-base.h \
   /usr/include/asm-generic/errno.h \
@@ -140,8 +138,6 @@ CMakeFiles/RecolourMaker.dir/RecolourMaker.c.o: RecolourMaker.c \
 
 /usr/include/x86_64-linux-gnu/bits/types/__fpos_t.h:
 
-/usr/include/x86_64-linux-gnu/bits/types/FILE.h:
-
 /usr/include/x86_64-linux-gnu/bits/endianness.h:
 
 /usr/include/math.h:
@@ -152,6 +148,10 @@ CMakeFiles/RecolourMaker.dir/RecolourMaker.c.o: RecolourMaker.c \
 
 /usr/include/endian.h:
 
+/usr/include/x86_64-linux-gnu/bits/types/cookie_io_functions_t.h:
+
+/usr/include/x86_64-linux-gnu/bits/errno.h:
+
 /usr/include/x86_64-linux-gnu/bits/endian.h:
 
 /usr/include/string.h:
@@ -160,25 +160,17 @@ CMakeFiles/RecolourMaker.dir/RecolourMaker.c.o: RecolourMaker.c \
 
 /usr/include/stdlib.h:
 
+/usr/include/x86_64-linux-gnu/bits/floatn-common.h:
+
+/usr/include/strings.h:
+
 /usr/include/x86_64-linux-gnu/bits/dirent_ext.h:
 
 clay.h:
 
-/usr/include/strings.h:
+/usr/include/x86_64-linux-gnu/bits/types/__locale_t.h:
 
-/usr/include/x86_64-linux-gnu/bits/floatn-common.h:
-
-/usr/local/include/raylib.h:
-
-/usr/include/x86_64-linux-gnu/bits/types/clock_t.h:
-
-/usr/include/x86_64-linux-gnu/bits/types/__FILE.h:
-
-/usr/include/linux/limits.h:
-
-/usr/include/linux/errno.h:
-
-/usr/include/x86_64-linux-gnu/bits/stdint-intn.h:
+/usr/include/stdio.h:
 
 /usr/lib/gcc/x86_64-linux-gnu/13/include/stddef.h:
 
@@ -196,15 +188,11 @@ RecolourMaker.c:
 
 /usr/include/features.h:
 
+/usr/include/x86_64-linux-gnu/bits/types/FILE.h:
+
 clay_renderer_raylib.c:
 
 /usr/include/x86_64-linux-gnu/bits/libc-header-start.h:
-
-dds.h:
-
-/usr/include/x86_64-linux-gnu/bits/types/cookie_io_functions_t.h:
-
-/usr/include/x86_64-linux-gnu/bits/errno.h:
 
 /usr/include/alloca.h:
 
@@ -213,12 +201,6 @@ dds.h:
 /usr/include/x86_64-linux-gnu/bits/types/sigset_t.h:
 
 /usr/include/x86_64-linux-gnu/bits/time64.h:
-
-/usr/include/x86_64-linux-gnu/bits/types/__locale_t.h:
-
-/usr/include/stdio.h:
-
-dds.c:
 
 /usr/include/x86_64-linux-gnu/bits/fp-fast.h:
 
@@ -239,6 +221,10 @@ dds.c:
 /usr/include/x86_64-linux-gnu/bits/libm-simd-decl-stubs.h:
 
 /usr/include/errno.h:
+
+/usr/include/linux/errno.h:
+
+/usr/include/x86_64-linux-gnu/bits/stdint-intn.h:
 
 /usr/include/x86_64-linux-gnu/bits/floatn.h:
 
@@ -293,3 +279,11 @@ dds.c:
 /usr/include/x86_64-linux-gnu/bits/struct_rwlock.h:
 
 /usr/include/x86_64-linux-gnu/bits/thread-shared-types.h:
+
+/usr/local/include/raylib.h:
+
+/usr/include/x86_64-linux-gnu/bits/types/clock_t.h:
+
+/usr/include/linux/limits.h:
+
+/usr/include/x86_64-linux-gnu/bits/types/__FILE.h:
