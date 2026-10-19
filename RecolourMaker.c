@@ -1,10 +1,14 @@
 // TODO list:
-// add a way to figure out what it will take to recolour a part
 // bug: ../../GameData/TantaresLV/parts/BLOK_E/_AndromedaUS_VernierEngine_1.cfg not recognised as part config
 // bug: ../../GameData/Tantares/parts/core_lk_v2/lk_v2_fuel_tank_s0_1.cfg model data reading does not work
 // bug: ../../GameData/B9_Aerospace_Legacy/Parts/Utility_Landing_Gear_HDG/HDG1L.cfg not recognised as part cfg
 // bug: ../../GameData/B9_Aerospace_Legacy/Parts/Aero_Wing_HW21/part.cfg model not found
 // when parsing modules, more checks for being commented out
+// redo recolouring types and program flow, eg: add TUMaterial type
+// automatically calculate vectors
+// show which areas on a part use what material using the svg's next to ModelData.txt
+// add icons to files depending on type
+// re add lines between parent and child modules
 
 // DONE list:
 // draw module tree vertically instead of horizontally
@@ -25,11 +29,13 @@
 // add buttons that open / close the function windows
 // only show important modules / materials
 // fix memory leaks
+// add a way to figure out what it will take to recolour a part
+// redo the ui styling
 
+// using clay for the ui
 #define CLAY_IMPLEMENTATION
 #include "clay.h"
 #include "clay_renderer_raylib.c"
-// note: we cant use CLAY_STRING, the program will crash
 
 #include <raylib.h>
 #include <raymath.h>
@@ -41,16 +47,6 @@
 #include <stdint.h>
 
 #define int int32_t
-
-// global variables
-const int nullTerminator = 1;
-const float floatImprecisionBuffer = 0.001f;
-
-// global ui settings
-const int padding = 5;
-const int cornerRadius = 5;
-const int fontSize = 15;
-const Clay_Color textColour = (Clay_Color){ .r = 0, .b = 0, .g = 0, .a = 255};
 
 //▀█▀ █▄█ █▀█ █▀▀ █▀
 //░█░ ░█░ █▀▀ ██▄ ▄█
@@ -191,8 +187,100 @@ typedef struct NamedTextureArray
 }
 NamedTextureArray;
 
-// global sprite atlas
-const NamedTextureArray * spriteAtlas;
+// the textures used for embossed containers
+typedef struct EmbossedTextures
+{
+	Texture * topLeft;
+	Texture * topLeftInverse;
+	Texture * top;
+	Texture * topRight;
+	Texture * topRightInverse;
+	Texture * left;
+	Texture * right;
+	Texture * bottomLeft;
+	Texture * bottomLeftInverse;
+	Texture * bottom;
+	Texture * bottomRight;
+	Texture * bottomRightInverse;
+}
+EmbossedTextures;
+
+// global variables
+const int nullTerminator = 1;
+const float floatImprecisionBuffer = 0.001f;
+const NamedTextureArray * textureAtlas = NULL;
+const EmbossedTextures * embossedTextures = NULL;
+
+// global ui settings
+const int padding = 5;
+const int cornerRadius = 5;
+const int fontSize = 15;
+const Clay_Color textColour = (Clay_Color){ .r = 0, .b = 0, .g = 0, .a = 255};
+
+// reusable 90's style embossed box
+#define EMBOSSED_CONTAINER(containerWidth, containerHeight, ...)\
+	CLAY_AUTO_ID({ .backgroundColor = RaylibToClayColour(LIGHTGRAY), .layout = { .layoutDirection = CLAY_TOP_TO_BOTTOM, .sizing = { .width = containerWidth, .height = containerHeight } } })\
+	{																																												\
+		CLAY_AUTO_ID({ .layout = { .layoutDirection = CLAY_LEFT_TO_RIGHT, .sizing = { .width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_FIT() } } })								\
+		{																																											\
+			/* draw the top border */																																				\
+			CLAY_AUTO_ID({ .layout = { .sizing = { .width = CLAY_SIZING_FIXED(2), .height = CLAY_SIZING_FIXED(2) } }, .image = { .imageData = embossedTextures->topLeft } }) {}		\
+			CLAY_AUTO_ID({ .layout = { .sizing = { .width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_FIXED(2) } }, .image = { .imageData = embossedTextures->top } }) {}			\
+			CLAY_AUTO_ID({ .layout = { .sizing = { .width = CLAY_SIZING_FIXED(2), .height = CLAY_SIZING_FIXED(2) } }, .image = { .imageData = embossedTextures->topRight } }) {}	\
+		}																																											\
+		CLAY_AUTO_ID({ .layout = { .layoutDirection = CLAY_LEFT_TO_RIGHT, .sizing = { .width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_GROW() } } })								\
+		{	/* draw the left border */																																				\
+			CLAY_AUTO_ID({ .layout = { .sizing = { .width = CLAY_SIZING_FIXED(2), .height = CLAY_SIZING_GROW() } }, .image = { .imageData = embossedTextures->left } }) {}			\
+			/* this forces the right border to the right */																															\
+			CLAY_AUTO_ID({ .layout = { .childAlignment = CLAY_ALIGN_X_RIGHT, .layoutDirection = CLAY_LEFT_TO_RIGHT, .sizing = { .width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_GROW() } } })\
+			{																																										\
+				/* add whatever was put as the ... paramater here */																												\
+				__VA_ARGS__;																																						\
+				/* draw the right border */																																			\
+				CLAY_AUTO_ID({ .layout = { .sizing = { .width = CLAY_SIZING_FIXED(2), .height = CLAY_SIZING_GROW() } }, .image = { .imageData = embossedTextures->right } }) {}		\
+			}																																										\
+		}																																											\
+		CLAY_AUTO_ID({ .layout = { .layoutDirection = CLAY_LEFT_TO_RIGHT, .sizing = { .width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_FIT() } } })								\
+		{																																											\
+			/* draw the bottom border */																																			\
+			CLAY_AUTO_ID({ .layout = { .sizing = { .width = CLAY_SIZING_FIXED(2), .height = CLAY_SIZING_FIXED(2) } }, .image = { .imageData = embossedTextures->bottomLeft } }) {}	\
+			CLAY_AUTO_ID({ .layout = { .sizing = { .width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_FIXED(2) } }, .image = { .imageData = embossedTextures->bottom } }) {}		\
+			CLAY_AUTO_ID({ .layout = { .sizing = { .width = CLAY_SIZING_FIXED(2), .height = CLAY_SIZING_FIXED(2) } }, .image = { .imageData = embossedTextures->bottomRight } }) {}	\
+		}																																											\
+	}
+
+// box with the embossing inverted, so it looks inset
+#define EMBOSSED_CONTAINER_INVERSE(containerWidth, containerHeight, ...)\
+	CLAY_AUTO_ID({ .backgroundColor = RaylibToClayColour(LIGHTGRAY), .layout = { .layoutDirection = CLAY_TOP_TO_BOTTOM, .sizing = { .width = containerWidth, .height = containerHeight } } })\
+	{																																												\
+		CLAY_AUTO_ID({ .layout = { .layoutDirection = CLAY_LEFT_TO_RIGHT, .sizing = { .width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_FIT() } } })								\
+		{																																											\
+			/* draw the top border */																																				\
+			CLAY_AUTO_ID({ .layout = { .sizing = { .width = CLAY_SIZING_FIXED(2), .height = CLAY_SIZING_FIXED(2) } }, .image = { .imageData = embossedTextures->topLeftInverse } }) {}	\
+			CLAY_AUTO_ID({ .layout = { .sizing = { .width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_FIXED(2) } }, .image = { .imageData = embossedTextures->bottom } }) {}		\
+			CLAY_AUTO_ID({ .layout = { .sizing = { .width = CLAY_SIZING_FIXED(2), .height = CLAY_SIZING_FIXED(2) } }, .image = { .imageData = embossedTextures->topRightInverse } }) {}	\
+		}																																											\
+		CLAY_AUTO_ID({.layout = { .layoutDirection = CLAY_LEFT_TO_RIGHT, .sizing = { .width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_GROW() } } })								\
+		{	/* draw the left border */																																				\
+			CLAY_AUTO_ID({ .layout = { .sizing = { .width = CLAY_SIZING_FIXED(2), .height = CLAY_SIZING_GROW() } }, .image = { .imageData = embossedTextures->right } }) {}			\
+			/* this forces the right border to the right */																															\
+			CLAY_AUTO_ID({ .layout = { .childAlignment = CLAY_ALIGN_X_RIGHT, .layoutDirection = CLAY_LEFT_TO_RIGHT, .sizing = { .width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_GROW() } } })\
+			{																																										\
+				/* add whatever was put as the ... paramater here */																												\
+				__VA_ARGS__;																																						\
+				/* draw the right border */																																			\
+				CLAY_AUTO_ID({ .layout = { .sizing = { .width = CLAY_SIZING_FIXED(2), .height = CLAY_SIZING_GROW() } }, .image = { .imageData = embossedTextures->left } }) {}		\
+			}																																										\
+		}																																											\
+		CLAY_AUTO_ID({.layout = { .layoutDirection = CLAY_LEFT_TO_RIGHT, .sizing = { .width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_FIT() } } })								\
+		{																																											\
+			/* draw the bottom border */																																			\
+			CLAY_AUTO_ID({ .layout = { .sizing = { .width = CLAY_SIZING_FIXED(2), .height = CLAY_SIZING_FIXED(2) } }, .image = { .imageData = embossedTextures->bottomLeftInverse } }) {}	\
+			CLAY_AUTO_ID({ .layout = { .sizing = { .width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_FIXED(2) } }, .image = { .imageData = embossedTextures->top } }) {}			\
+			CLAY_AUTO_ID({ .layout = { .sizing = { .width = CLAY_SIZING_FIXED(2), .height = CLAY_SIZING_FIXED(2) } }, .image = { .imageData = embossedTextures->bottomRightInverse } }) {}	\
+		}																																											\
+	}
+// gosh aren't these macro things fun! 😁️
 
 //█▀▄▀█ █ █▀ █▀▀
 //█░▀░█ █ ▄█ █▄▄
@@ -2033,7 +2121,13 @@ bool FileExtensionMatches(String fileName, String targetExtension)
 	// working from the end, check if each char matches, ignoring \0 at the start of the filename
 	
 	int targetIndex = targetExtension.length - 1;
-	int fileIndex = fileName.length - 1;
+	int fileIndex = fileName.length;
+	
+	if (HasNullTerminator(fileName) == true)
+	{
+		fileIndex -= 1;
+	}
+	
 	int targetLength = targetExtension.length;
 	
 	// ignore trailing \0
@@ -2167,23 +2261,28 @@ void NavigateDirectory(String * selectedDirectory, String clickedDirectory, Part
 }
 
 //█▀ █▀█ █▀█ █ ▀█▀ █▀▀ █▀
-//▄█ █▀▀ █▀▄ █ ░█░ ██▄ ▄█
+//▄█ █▀▀ █▀▄ █ ░█░ ██▄ ▄█ (textures)
 
-// loads all of the images in the Sprites directory into an array of textures
-void LoadSprites(NamedTextureArray * sprites)
+// loads all of the images in the textures directory into the texture atlas
+void LoadTextureAtlas()
 {
-	String spritesLocation = (String){ .chars = "Sprites/", .length = 9 };
-	DIR * spriteDirectory = opendir(spritesLocation.chars);
+	String texturesLocation = (String){ .chars = "Textures/", .length = 10 };
+	DIR * texturesDirectory = opendir(texturesLocation.chars);
 	
-	if (spriteDirectory == NULL)
+	if (texturesDirectory == NULL)
 	{
 		int err = errno;
-		printf("ERROR: Could not open: %s because: %s\n", spritesLocation.chars, strerror(err));
+		printf("ERROR: Could not open: %s because: %s\n", texturesLocation.chars, strerror(err));
 		return;
 	}
 	
-	// read all of the entries in the directory and load all as .png files as textures
-	struct dirent * entry = readdir(spriteDirectory);
+	// create the texture atlas
+	NamedTextureArray * textures = malloc(sizeof(NamedTextureArray));
+	textures->textures = malloc(sizeof(NamedTexture));
+	textureAtlas = textures;
+	
+	// read all of the entries in the directory and load all .png files as textures
+	struct dirent * entry = readdir(texturesDirectory);
 	
 	while (entry != NULL)
 	{
@@ -2192,20 +2291,20 @@ void LoadSprites(NamedTextureArray * sprites)
 		//printf("entry name: %s\n", entry->d_name);
 		
 		// check if the entry name ends in .png
-		if (entryNameLength > 4 && entry->d_name[entryNameLength - 1] == 'g' && entry->d_name[entryNameLength - 2] == 'n' && entry->d_name[entryNameLength - 3] == 'p' && entry->d_name[entryNameLength - 4] == '.')
+		if (FileExtensionMatches((String){ .chars = entry->d_name, .length = entryNameLength }, (String){ .chars = ".png", .length = 5 }) == true)
 		{
 			// build the path to the texture from the game executable
-			// start with Sprites/
+			// start with Textures/
 			String texturePath = (String){ .chars = NULL, .length = 0 };
-			ResizeString(&texturePath, spritesLocation.length);
-			memcpy(texturePath.chars, spritesLocation.chars, sizeof(char) * spritesLocation.length);
+			ResizeString(&texturePath, texturesLocation.length);
+			memcpy(texturePath.chars, texturesLocation.chars, sizeof(char) * texturesLocation.length);
 			// add the name of the .png file
 			ResizeString(&texturePath, texturePath.length + entryNameLength);
-			memcpy(&texturePath.chars[spritesLocation.length - 1], entry->d_name, sizeof(char) * entryNameLength);
+			memcpy(&texturePath.chars[texturesLocation.length - 1], entry->d_name, sizeof(char) * entryNameLength);
 			
 			// load the .png as a texture
 			NamedTexture newTexture = (NamedTexture){ .texture = LoadTexture(texturePath.chars), .name = (String){ .chars = NULL, .length = 0 } };
-			// name the texture after its filename../../exportedUVMaps/Tantares/parts/core_lk_v2/lk_v2_fuel_tank_s0_1
+			// name the texture after its filename
 			ResizeString(&newTexture.name, entryNameLength + nullTerminator);
 			memcpy(newTexture.name.chars, entry->d_name, sizeof(char) * entryNameLength);
 			
@@ -2213,29 +2312,29 @@ void LoadSprites(NamedTextureArray * sprites)
 			BetterPrint(newTexture.name);
 			
 			// add the new texture to the array
-			sprites->length += 1;
-			sprites->textures = realloc(sprites->textures, sprites->length * sizeof(NamedTexture));
-			sprites->textures[sprites->length - 1] = newTexture;
+			textures->length += 1;
+			textures->textures = realloc(textures->textures, textures->length * sizeof(NamedTexture));
+			textures->textures[textures->length - 1] = newTexture;
 			
 			free(texturePath.chars);
 		}
 		// read the next entry in the directory
-		entry = readdir(spriteDirectory);
+		entry = readdir(texturesDirectory);
 	}
 	
-	closedir(spriteDirectory);
+	closedir(texturesDirectory);
 }
 
 // find a texture with a specific name
-Texture * GetTextureWithName(NamedTextureArray textures, String name)
+Texture * GetTextureWithName(String name)
 {
-	for (int index = 0; index < textures.length; index ++)
+	for (int index = 0; index < textureAtlas->length; index ++)
 	{
-		if (StringsEqual(textures.textures[index].name, name) == true)
+		if (StringsEqual(textureAtlas->textures[index].name, name) == true)
 		{
 //			printf("found texture: ");
 //			BetterPrint(name);
-			return &textures.textures[index].texture;
+			return &textureAtlas->textures[index].texture;
 		}
 	}
 	
@@ -2247,6 +2346,27 @@ Texture * GetTextureWithName(NamedTextureArray textures, String name)
 	*notFound = LoadTextureFromImage(GenImageColor(10, 10, MAGENTA));
 	
 	return notFound;
+}
+
+void LoadEmbossedTextures()
+{
+	// create embossed textures holder
+	EmbossedTextures * textures = malloc(sizeof(EmbossedTextures));
+	embossedTextures = textures;
+	
+	// find the embossed textures in the texture atlas
+	textures->topLeft = GetTextureWithName((String){ .chars = "EmbossedTopLeft.png", .length = 20 });
+	textures->topLeftInverse = GetTextureWithName((String){ .chars = "EmbossedTopLeftInverse.png", .length = 27 });
+	textures->top = GetTextureWithName((String){ .chars = "EmbossedTop.png", .length = 16 });
+	textures->topRight = GetTextureWithName((String){ .chars = "EmbossedTopRight.png", .length = 21 });
+	textures->topRightInverse = GetTextureWithName((String){ .chars = "EmbossedTopRightInverse.png", .length = 28 });
+	textures->left = GetTextureWithName((String){ .chars = "EmbossedLeft.png", .length = 17 });
+	textures->right = GetTextureWithName((String){ .chars = "EmbossedRight.png", .length = 18 });
+	textures->bottomLeft = GetTextureWithName((String){ .chars = "EmbossedBottomLeft.png", .length = 23 });
+	textures->bottomLeftInverse = GetTextureWithName((String){ .chars = "EmbossedBottomLeftInverse.png", .length = 30 });
+	textures->bottom = GetTextureWithName((String){ .chars = "EmbossedBottom.png", .length = 19 });
+	textures->bottomRight = GetTextureWithName((String){ .chars = "EmbossedBottomRight.png", .length = 24 });
+	textures->bottomRightInverse = GetTextureWithName((String){ .chars = "EmbossedBottomRightInverse.png", .length = 31 });
 }
 
 //TODO:
@@ -2619,7 +2739,8 @@ void AddRecolourProperties(ModelMaterial material, String * patch)
 	
 	// TU shaders also have vectors:
 	// _DiffuseNorm
-	// _MetalNorm or _SpecularNorm and _SmoothnessNorm
+	// _SpecularNorm
+	// _SmoothnessNorm
 	
 	// all properties that are not textures can probably be ignored
 	String mainTex = (String){ .chars = "_MainTex", .length = 9 };
@@ -2693,6 +2814,11 @@ void AddRecolourProperties(ModelMaterial material, String * patch)
 		
 		printf("property: %s not listed as relevant to recolouring, skipping\n", property.chars);
 	}
+	
+	// add the _MaskTex
+	AddToString(patch, (String){ .chars = "\n		texture = _MaskTex,<RECOLOURING_MASK>\n", .length = 42 });
+	// add the vectors
+	AddToString(patch, (String){ .chars = "\n		vector = _DiffuseNorm,x,y,z\n		vector = _SmoothnessNorm,x,y,z\n		vector = _SpecularNorm,x,y,z", .length = 95 });
 	
 	free(textureTypes.strings);
 }
@@ -2902,6 +3028,7 @@ void CreateRecolourPatch(PartInformation part, TextureSwitchArray textureSwitche
 		// add the propeties of the material to the patch
 		AddRecolourProperties(material, recolourPatch);
 		
+		// end the texture set
 		AddToString(recolourPatch, (String){ .chars = "\n	}\n}\n", .length = 7 });
 	}
 }
@@ -3051,20 +3178,36 @@ void Recolour(PartInformation * part, RecolourConfig * recolour)
 // draws an image 
 void DrawImage(String textureName)
 {
-	Texture * image = GetTextureWithName(*spriteAtlas, textureName);
+	Texture * image = GetTextureWithName(textureName);
 	//printf("width: %d, height: %d\n", image->width, image->height);
-	CLAY_AUTO_ID({ .aspectRatio = { .aspectRatio = (float)image->width / (float)image->height }, .layout = { .sizing = { .width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_GROW() } }, .image = { .imageData = image } }) {}
+	CLAY_AUTO_ID({ .layout = { .sizing = { .width = CLAY_SIZING_FIXED((float)image->width), .height = CLAY_SIZING_FIXED((float)image->height) } }, .image = { .imageData = image } }) {}
 }
+
+// a button
+// theres gotta be a -4 in CLAY_SIZING_FIXED to account for the width of the embossed container's borders
+#define BUTTON(textureName, buttonWidth, buttonHeight, ...)\
+	EMBOSSED_CONTAINER																								\
+	( CLAY_SIZING_FIXED(buttonWidth), CLAY_SIZING_FIXED(buttonHeight),																						\
+		Clay_Color buttonDefault = RaylibToClayColour(LIGHTGRAY);													\
+		Clay_Color buttonHovered = RaylibToClayColour(DARKBLUE);													\
+		Clay_LayoutConfig buttonLayout = (Clay_LayoutConfig){ .sizing = { .height = CLAY_SIZING_FIXED(buttonHeight - 4), .width = CLAY_SIZING_FIXED(buttonWidth - 4) }, .layoutDirection = CLAY_TOP_TO_BOTTOM, .childAlignment = { .x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER }, .childGap = padding, .padding = CLAY_PADDING_ALL(padding) };\
+																													\
+		CLAY_AUTO_ID({ .backgroundColor = Clay_Hovered() ? buttonHovered : buttonDefault, .layout = buttonLayout })	\
+		{																											\
+			DrawImage(textureName);																					\
+			__VA_ARGS__;																							\
+		}																											\
+	);
 
 // draws a horizontal scrollbar
 void DrawHorizontalScrollbar(Clay_ElementId scrollingContainer)
 {
 	// scrollbar settings
-	int scrollbarHeight = 32;
-	int arrowWidth = scrollbarHeight;
+	int scrollbarHeight = 20;
+	int arrowBoxSize = scrollbarHeight;	// width / height of the box that holds the arrow
 	
-	Clay_Color scrollbarDefault = RaylibToClayColour(WHITE);
-	Clay_Color scrollbarHovered = RaylibToClayColour(LIGHTGRAY);
+	Clay_Color scrollbarDefault = RaylibToClayColour(LIGHTGRAY);
+	Clay_Color scrollbarHovered = RaylibToClayColour(DARKBLUE);
 	
 	// box that holds the scrollbar
 	CLAY_AUTO_ID({ .layout = { .layoutDirection = CLAY_LEFT_TO_RIGHT, .sizing = { .width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_FIXED(scrollbarHeight) } } })
@@ -3086,7 +3229,7 @@ void DrawHorizontalScrollbar(Clay_ElementId scrollingContainer)
 		// get information about the box that holds the scrollbar
 		Clay_ElementData scrollbar = Clay_GetElementData((Clay_ElementId){ .id = Clay_GetOpenElementId() });
 		// the width of the scrollable area
-		float scrollAreaWidth = scrollbar.boundingBox.width - (1 * arrowWidth);
+		float scrollAreaWidth = scrollbar.boundingBox.width - (2 * arrowBoxSize);
 		// the proportion of the content that the containter can show
 		float contentContainterWidthProportion = containerWidth / contentWidth;
 		// the width of the scrollbar, capped to the width of the scrolling area
@@ -3105,13 +3248,10 @@ void DrawHorizontalScrollbar(Clay_ElementId scrollingContainer)
 		//printf("scroll bar x: %f, scroll bar width: %f\n", scrollbarX, scrollbarWidth);
 		
 		// left side arrow
-		CLAY_AUTO_ID({ .layout = { .sizing = { .width = CLAY_SIZING_FIXED(arrowWidth), .height = CLAY_SIZING_GROW() } } })
-		{
-			DrawImage((String){ .chars = "ArrowRight.png", .length = 15 });
-		}
+		BUTTON(((String){ .chars = "arrow-left.png", .length = 15 }), arrowBoxSize, arrowBoxSize, ((Clay_Hovered() == true && IsMouseButtonPressed(0) == true) ? scrolledContent.scrollPosition->x += 5 : 0));
 		
 		// scrolling area
-		CLAY_AUTO_ID({ .layout = { .padding = { .left = 0, .right = 0, .top = 1, .bottom = 1 }, .sizing = { .width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_GROW() } }, .clip = { .vertical = false, .horizontal = true, .childOffset = { .x = scrollbarX, .y = 0 } } })
+		CLAY_AUTO_ID({ .backgroundColor = RaylibToClayColour(LIGHTGRAY), .layout = { .sizing = { .width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_GROW() } }, .clip = { .vertical = false, .horizontal = true, .childOffset = { .x = scrollbarX, .y = 0 } } })
 		{
 			// if the area is hovered and click is held, scroll whatever scrolling container the scrollbar is connected to to wherever was clicked
 			if (Clay_Hovered() == true && IsMouseButtonDown(0) == true)
@@ -3138,12 +3278,12 @@ void DrawHorizontalScrollbar(Clay_ElementId scrollingContainer)
 				scrolledContent.scrollPosition->x = contentScroll;
 			}
 			
-			// draw the scrolling bit of the scrollbar, draw a black one behind a slightly smaller one to make a border
-			CLAY_AUTO_ID({ .backgroundColor = RaylibToClayColour(BLACK), .cornerRadius = CLAY_CORNER_RADIUS(scrollbarHeight / 2), .layout = { .padding = CLAY_PADDING_ALL(1), .sizing = { .height = CLAY_SIZING_GROW(), .width = CLAY_SIZING_FIXED(scrollbarWidth) } } })
-			{
-				CLAY_AUTO_ID({ .backgroundColor = Clay_Hovered() ? scrollbarHovered : scrollbarDefault , .cornerRadius = CLAY_CORNER_RADIUS((scrollbarHeight / 2) - 1), .layout = { .sizing = { .height = CLAY_SIZING_GROW(), .width = CLAY_SIZING_GROW() } } }) { }
-			}
+			// draw the scrolling bit of the scrollbar
+			EMBOSSED_CONTAINER(CLAY_SIZING_FIXED(scrollbarWidth), CLAY_SIZING_FIXED(scrollbarHeight), CLAY_AUTO_ID({ .backgroundColor = (Clay_Hovered() == true ? scrollbarHovered : scrollbarDefault), .layout = { .sizing = { .width = CLAY_SIZING_FIXED(scrollbarWidth - 4), .height = CLAY_SIZING_FIXED(scrollbarHeight - 4) } } }));
 		}
+		
+		// right side arrow
+		BUTTON(((String){ .chars = "arrow-right.png", .length = 16 }), arrowBoxSize, arrowBoxSize, ((Clay_Hovered() == true && IsMouseButtonPressed(0) == true) ? scrolledContent.scrollPosition->x -= 5 : 0));
 	}
 }
 
@@ -3151,11 +3291,11 @@ void DrawHorizontalScrollbar(Clay_ElementId scrollingContainer)
 void DrawVerticalScrollbar(Clay_ElementId scrollingContainer)
 {
 	// scrollbar settings
-	int scrollbarWidth = 32;
-	int arrowHeight = scrollbarWidth;
+	int scrollbarWidth = 20;
+	int arrowBoxSize = scrollbarWidth;
 	
-	Clay_Color scrollbarDefault = RaylibToClayColour(WHITE);
-	Clay_Color scrollbarHovered = RaylibToClayColour(LIGHTGRAY);
+	Clay_Color scrollbarDefault = RaylibToClayColour(LIGHTGRAY);
+	Clay_Color scrollbarHovered = RaylibToClayColour(DARKBLUE);
 	
 	// box that holds the scrollbar
 	CLAY_AUTO_ID({ .layout = { .layoutDirection = CLAY_TOP_TO_BOTTOM, .sizing = { .width = CLAY_SIZING_FIXED(scrollbarWidth), .height = CLAY_SIZING_GROW() } } })
@@ -3177,7 +3317,7 @@ void DrawVerticalScrollbar(Clay_ElementId scrollingContainer)
 		// get information about the box that holds the scrollbar
 		Clay_ElementData scrollbar = Clay_GetElementData((Clay_ElementId){ .id = Clay_GetOpenElementId() });
 		// the height of the scrollable area
-		float scrollAreaHeight = scrollbar.boundingBox.height - (2 * arrowHeight);
+		float scrollAreaHeight = scrollbar.boundingBox.height - (2 * arrowBoxSize);
 		//printf("scroll area height: %f\n", scrollAreaHeight);
 		// the proportion of the content that the containter can show
 		float contentContainterHeightProportion = containerHeight / contentHeight;
@@ -3198,13 +3338,10 @@ void DrawVerticalScrollbar(Clay_ElementId scrollingContainer)
 		//printf("scrollbar height: %f, scrollbar y: %f\n", scrollbarHeight, scrollbarY);
 		
 		// top arrow
-		CLAY_AUTO_ID({ .layout = { .sizing = { .width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_FIXED(arrowHeight) } } })
-		{
-			DrawImage((String){ .chars = "ArrowDown.png", .length = 14 });
-		}
+		BUTTON(((String){ .chars = "arrow-up.png", .length = 13 }), arrowBoxSize, arrowBoxSize, ((Clay_Hovered() == true && IsMouseButtonPressed(0) == true) ? scrolledContent.scrollPosition->y += 5 : 0));
 		
 		// scrolling area
-		CLAY_AUTO_ID({ .layout = { .padding = { .left = 1, .right = 1, .top = 0, .bottom = 0 }, .sizing = { .width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_GROW() } }, .clip = { .vertical = true, .horizontal = false, .childOffset = { .x = 0, .y = scrollbarY } } })
+		CLAY_AUTO_ID({ .backgroundColor = RaylibToClayColour(LIGHTGRAY), .layout = { .sizing = { .width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_GROW() } }, .clip = { .vertical = true, .horizontal = false, .childOffset = { .x = 0, .y = scrollbarY } } })
 		{
 			// if the area is hovered and click is held, scroll whatever scrolling container the scrollbar is connected to to wherever was clicked
 			if (Clay_Hovered() == true && IsMouseButtonDown(0) == true)
@@ -3231,17 +3368,12 @@ void DrawVerticalScrollbar(Clay_ElementId scrollingContainer)
 				scrolledContent.scrollPosition->y = contentScroll;
 			}
 			
-			// draw the scrolling bit of the scrollbar, draw a black one behind a slightly smaller one to make a border
-			CLAY_AUTO_ID({ .backgroundColor = RaylibToClayColour(BLACK), .cornerRadius = CLAY_CORNER_RADIUS(scrollbarWidth / 2), .layout = { .padding = CLAY_PADDING_ALL(1), .sizing = { .height = CLAY_SIZING_FIXED(scrollbarHeight), .width = CLAY_SIZING_GROW() } } })
-			{
-				CLAY_AUTO_ID({ .backgroundColor = Clay_Hovered() ? scrollbarHovered : scrollbarDefault , .cornerRadius = CLAY_CORNER_RADIUS((scrollbarWidth / 2) - 1), .layout = { .sizing = { .height = CLAY_SIZING_GROW(), .width = CLAY_SIZING_GROW() } } }) { }
-			}
+			// draw the scrolling bit of the scrollbar
+			EMBOSSED_CONTAINER(CLAY_SIZING_FIXED(scrollbarWidth), CLAY_SIZING_FIXED(scrollbarHeight), CLAY_AUTO_ID({ .backgroundColor = (Clay_Hovered() == true ? scrollbarHovered : scrollbarDefault), .layout = { .sizing = { .width = CLAY_SIZING_FIXED(scrollbarWidth - 4), .height = CLAY_SIZING_FIXED(scrollbarHeight - 4) } } }));
 		}
+		
 		// bottom arrow
-		CLAY_AUTO_ID({ .layout = { .sizing = { .width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_FIXED(arrowHeight) } } })
-		{
-			DrawImage((String){ .chars = "ArrowUpLeft.png", .length = 16 });
-		}
+		BUTTON(((String){ .chars = "arrow-down.png", .length = 15 }), arrowBoxSize, arrowBoxSize, ((Clay_Hovered() == true && IsMouseButtonPressed(0) == true) ? scrolledContent.scrollPosition->y -= 5 : 0));
 	}
 }
 
@@ -3289,48 +3421,50 @@ void DirectoryNavigator(PartInformation * part)
 	rewinddir(selectedDirectory);
 	struct dirent * entry = readdir(selectedDirectory);
 	
-	// create a box to store the horizontal scroll bar
-	CLAY_AUTO_ID({ .layout = { .layoutDirection = CLAY_TOP_TO_BOTTOM, .sizing = { .height = CLAY_SIZING_GROW(), .width = CLAY_SIZING_GROW() } } })
-	{
-		// create a scrolling box to display the directories entries in
-		CLAY(CLAY_ID("DirectoryNavigator"), { .layout = { .sizing = { .width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_GROW() }, .padding = CLAY_PADDING_ALL(padding), .childGap = padding, .layoutDirection = CLAY_TOP_TO_BOTTOM}, .clip = { .vertical = true, .horizontal = true, .childOffset = Clay_GetScrollOffset() } })
+	EMBOSSED_CONTAINER_INVERSE
+	( CLAY_SIZING_GROW(), CLAY_SIZING_GROW(),
+		// create a box to store the horizontal scroll bar
+		CLAY_AUTO_ID({ .layout = { .layoutDirection = CLAY_TOP_TO_BOTTOM, .sizing = { .height = CLAY_SIZING_GROW(), .width = CLAY_SIZING_GROW() } } })
 		{
-			// draw all the entries in the directory
-			while (entry != NULL)
+			// create a scrolling box to display the directories entries in
+			CLAY(CLAY_ID("DirectoryNavigator"), { .layout = { .sizing = { .width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_GROW() }, .padding = CLAY_PADDING_ALL(padding), .childGap = padding, .layoutDirection = CLAY_TOP_TO_BOTTOM}, .clip = { .vertical = true, .horizontal = true, .childOffset = Clay_GetScrollOffset() } })
 			{
-				// draw a button with the name of the directory entry
-				CLAY_AUTO_ID({ .cornerRadius = CLAY_CORNER_RADIUS(cornerRadius), .backgroundColor = Clay_Hovered() ? directoryHovered : directoryBackground, .layout = { .sizing = { .width = CLAY_SIZING_FIT(), .height = CLAY_SIZING_FIT() }, .padding = CLAY_PADDING_ALL(padding) } })
+				// draw all the entries in the directory
+				while (entry != NULL)
 				{
-					// copy the directories name out of the dirent and add a null terminator
-					String directoryName = (String){ .length = strlen(entry->d_name), .chars = malloc(strlen(entry->d_name)) };
-					memcpy(directoryName.chars, entry->d_name, sizeof(char) * directoryName.length);
-					GarunteeNullTerminator(&directoryName);
-					
-					// draw the name of the directory
-					CLAY_TEXT(MyToClayString(directoryName), { .textColor = textColour, .fontSize = fontSize, .fontId = 0 });
-					
-					// if this directory has been clicked on navigate to this directory
-					if (Clay_Hovered() && IsMouseButtonPressed(0))
+					// draw a button with the name of the directory entry
+					CLAY_AUTO_ID({ .cornerRadius = CLAY_CORNER_RADIUS(cornerRadius), .backgroundColor = Clay_Hovered() ? directoryHovered : directoryBackground, .layout = { .sizing = { .width = CLAY_SIZING_FIT(), .height = CLAY_SIZING_FIT() }, .padding = CLAY_PADDING_ALL(padding) } })
 					{
-						NavigateDirectory(selectedDirectoryPath, directoryName, part);
+						// copy the directories name out of the dirent and add a null terminator
+						String directoryName = (String){ .length = strlen(entry->d_name), .chars = malloc(strlen(entry->d_name)) };
+						memcpy(directoryName.chars, entry->d_name, sizeof(char) * directoryName.length);
+						GarunteeNullTerminator(&directoryName);
+						
+						// draw the name of the directory
+						CLAY_TEXT(MyToClayString(directoryName), { .textColor = textColour, .fontSize = fontSize, .fontId = 0 });
+						
+						// if this directory has been clicked on navigate to this directory
+						if (Clay_Hovered() && IsMouseButtonPressed(0))
+						{
+							NavigateDirectory(selectedDirectoryPath, directoryName, part);
+						}
+						
+						free(directoryName.chars);
 					}
-					
-					free(directoryName.chars);
+					// read the next entry in the directory
+					entry = readdir(selectedDirectory);
 				}
-				// read the next entry in the directory
-				entry = readdir(selectedDirectory);
+				
+				closedir(selectedDirectory);
 			}
 			
-			closedir(selectedDirectory);
+			Clay_String navigatorName = MyToClayString((String){ .chars = "DirectoryNavigator", .length = 19 });
+			DrawHorizontalScrollbar(Clay_GetElementId(navigatorName));
 		}
+		
 		Clay_String navigatorName = MyToClayString((String){ .chars = "DirectoryNavigator", .length = 19 });
-		DrawHorizontalScrollbar(Clay_GetElementId(navigatorName));
-		//free((void *)navigatorName.chars);
-	}
-	
-	Clay_String navigatorName = MyToClayString((String){ .chars = "DirectoryNavigator", .length = 19 });
-	DrawVerticalScrollbar(Clay_GetElementId(navigatorName));
-	//free((void *)navigatorName.chars);
+		DrawVerticalScrollbar(Clay_GetElementId(navigatorName));
+	);
 }
 
 // copys a string to the clipboard if this element is clicked on
@@ -3515,24 +3649,25 @@ void DrawModuleTree(Module module, bool onlyRelevantModules)
 
 void DrawPartModules(Module module, bool onlyRelevantModules)
 {
-	// create a box to store the horizontal scroll bar
-	CLAY_AUTO_ID({ .layout = { .layoutDirection = CLAY_TOP_TO_BOTTOM, .sizing = { .height = CLAY_SIZING_GROW(), .width = CLAY_SIZING_GROW() } } })
-	{
-		// a scrolling box to put the module tree in
-		CLAY(CLAY_ID("ModuleTree"), { .layout = { .layoutDirection = CLAY_TOP_TO_BOTTOM, .sizing = { .width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_GROW() } }, .clip = { .vertical = true, .horizontal = true, .childOffset = Clay_GetScrollOffset() } })
+	EMBOSSED_CONTAINER_INVERSE
+	( CLAY_SIZING_GROW(), CLAY_SIZING_GROW(),
+		// create a box to store the horizontal scroll bar
+		CLAY_AUTO_ID({ .backgroundColor = RaylibToClayColour(WHITE), .layout = { .layoutDirection = CLAY_TOP_TO_BOTTOM, .sizing = { .height = CLAY_SIZING_GROW(), .width = CLAY_SIZING_GROW() } } })
 		{
-			// draw the module tree, starting at this module
-			DrawModuleTree(module, onlyRelevantModules);
+			// a scrolling box to put the module tree in
+			CLAY(CLAY_ID("ModuleTree"), { .layout = { .layoutDirection = CLAY_TOP_TO_BOTTOM, .sizing = { .width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_GROW() } }, .clip = { .vertical = true, .horizontal = true, .childOffset = Clay_GetScrollOffset() } })
+			{
+				// draw the module tree, starting at this module
+				DrawModuleTree(module, onlyRelevantModules);
+			}
+			
+			Clay_String moduleTreeName = MyToClayString((String){ .chars = "ModuleTree", .length = 11 });
+			DrawHorizontalScrollbar(Clay_GetElementId(moduleTreeName));
 		}
 		
 		Clay_String moduleTreeName = MyToClayString((String){ .chars = "ModuleTree", .length = 11 });
-		DrawHorizontalScrollbar(Clay_GetElementId(moduleTreeName));
-		//free((void *)moduleTreeName.chars);
-	}
-	
-	Clay_String moduleTreeName = MyToClayString((String){ .chars = "ModuleTree", .length = 11 });
-	DrawVerticalScrollbar(Clay_GetElementId(moduleTreeName));
-	//free((void *)moduleTreeName.chars);
+		DrawVerticalScrollbar(Clay_GetElementId(moduleTreeName));
+	);
 }
 
 // checks if a property is relevant to creating a recolour
@@ -3644,91 +3779,45 @@ void DrawMaterials(MuModel model, PartInformation part, bool onlyRelevantMateria
 // draws an array of models
 void DrawModels(ModelArray models, PartInformation part, bool onlyRelevantMaterials)
 {
-	// create a box to store the horizontal scroll bar
-	CLAY_AUTO_ID({ .layout = { .layoutDirection = CLAY_TOP_TO_BOTTOM, .sizing = { .height = CLAY_SIZING_GROW(), .width = CLAY_SIZING_GROW() } } })
-	{
-		// a scrolling box to put the models in
-		CLAY(CLAY_ID("Models"), { .layout = { .layoutDirection = CLAY_TOP_TO_BOTTOM, .sizing = { .width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_GROW() }, .padding = CLAY_PADDING_ALL(padding), .childGap = padding }, .clip = { .vertical = true, .horizontal = true, .childOffset = Clay_GetScrollOffset() } })
+	EMBOSSED_CONTAINER_INVERSE
+	( CLAY_SIZING_GROW(), CLAY_SIZING_GROW(),
+		// create a box to store the horizontal scroll bar
+		CLAY_AUTO_ID({ .backgroundColor = RaylibToClayColour(WHITE), .layout = { .layoutDirection = CLAY_TOP_TO_BOTTOM, .sizing = { .height = CLAY_SIZING_GROW(), .width = CLAY_SIZING_GROW() } } })
 		{
-			//printf("drawing: %d models\n", models.length);
-			for (int index = 0; index < models.length; index ++)
+			// a scrolling box to put the models in
+			CLAY(CLAY_ID("Models"), { .layout = { .layoutDirection = CLAY_TOP_TO_BOTTOM, .sizing = { .width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_GROW() }, .padding = CLAY_PADDING_ALL(padding), .childGap = padding }, .clip = { .vertical = true, .horizontal = true, .childOffset = Clay_GetScrollOffset() } })
 			{
-				MuModel model = models.models[index];
-				DrawMaterials(model, part, onlyRelevantMaterials);
+				//printf("drawing: %d models\n", models.length);
+				for (int index = 0; index < models.length; index ++)
+				{
+					MuModel model = models.models[index];
+					DrawMaterials(model, part, onlyRelevantMaterials);
+				}
 			}
+			
+			Clay_String modelsName = MyToClayString((String){ .chars = "Models", .length = 7 });
+			DrawHorizontalScrollbar(Clay_GetElementId(modelsName));
 		}
 		
 		Clay_String modelsName = MyToClayString((String){ .chars = "Models", .length = 7 });
-		DrawHorizontalScrollbar(Clay_GetElementId(modelsName));
-	}
-	
-	Clay_String modelsName = MyToClayString((String){ .chars = "Models", .length = 7 });
-	DrawVerticalScrollbar(Clay_GetElementId(modelsName));
-}
-
-// draw a toggleable button
-void DrawToggleButton(String trueTextureName, String falseTextureName, bool * condition, int size)
-{
-	// settings
-	Clay_Color buttonDefault = RaylibToClayColour(WHITE);
-	Clay_Color buttonHovered = RaylibToClayColour(SKYBLUE);
-	Clay_LayoutConfig buttonLayout = (Clay_LayoutConfig){ .sizing = { .height = CLAY_SIZING_FIXED(size), .width = CLAY_SIZING_FIXED(size) }, .layoutDirection = CLAY_TOP_TO_BOTTOM, .childAlignment = { .x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER }, .childGap = padding, .padding = CLAY_PADDING_ALL(padding) };
-	
-	// draw a button, with a different image if the condition is true / false
-	CLAY_AUTO_ID({ .backgroundColor = Clay_Hovered() ? buttonHovered : buttonDefault, .aspectRatio = { .aspectRatio = 1.0f }, .cornerRadius = CLAY_CORNER_RADIUS(cornerRadius), .layout = buttonLayout })
-	{
-		if (*condition == true)
-		{
-			DrawImage(trueTextureName);
-		}
-		else
-		{
-			DrawImage(falseTextureName);
-		}
-		
-		// toggle the condition if the button is clicked
-		if (Clay_Hovered() == true && IsMouseButtonPressed(0) == true)
-		{
-			*condition = !*condition;
-		}
-	}
-}
-
-// a button
-void DrawButton(String textureName, int size)
-{
-	// settings
-	Clay_Color buttonDefault = RaylibToClayColour(WHITE);
-	Clay_Color buttonHovered = RaylibToClayColour(SKYBLUE);
-	Clay_LayoutConfig buttonLayout = (Clay_LayoutConfig){ .sizing = { .height = CLAY_SIZING_FIXED(size), .width = CLAY_SIZING_FIXED(size) }, .layoutDirection = CLAY_TOP_TO_BOTTOM, .childAlignment = { .x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER }, .childGap = padding, .padding = CLAY_PADDING_ALL(padding) };
-	
-	// draw the button
-	CLAY_AUTO_ID({ .backgroundColor = Clay_Hovered() ? buttonHovered : buttonDefault, .aspectRatio = { .aspectRatio = 1.0f }, .cornerRadius = CLAY_CORNER_RADIUS(cornerRadius), .layout = buttonLayout })
-	{
-		DrawImage(textureName);
-	}
+		DrawVerticalScrollbar(Clay_GetElementId(modelsName));
+	);
 }
 
 // draws the navbar and checks which buttons are pressed
 void DrawNavbar(bool * onlyRelevantMaterials, bool * onlyRelevantModules, PartInformation * part, RecolourConfig * recolour)
 {
-	const int buttonSize = 100;
-	CLAY(CLAY_ID("NavBar"), { .layout = { .childGap = padding, .padding = CLAY_PADDING_ALL(padding), .sizing = { .width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_FIT() } }, .backgroundColor = RaylibToClayColour(RED) })
+	const int buttonIconSize = 48;
+	CLAY(CLAY_ID("NavBar"), { .layout = { .childGap = padding, .sizing = { .width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_FIT() } }, .backgroundColor = RaylibToClayColour(LIGHTGRAY) })
 	{
 		// buttons that turns on and off relevant modules
-		DrawToggleButton((String){ .chars = "ModuleTreeRelevantOn.png", .length = 25 }, (String){ .chars = "ModuleTreeRelevantOff.png", .length = 26 }, onlyRelevantModules, buttonSize);
+		BUTTON((*onlyRelevantModules == true ? (String){ .chars = "ModuleTreeRelevantOn.png", .length = 25 } : (String){ .chars = "ModuleTreeRelevantOff.png", .length = 26 }), buttonIconSize, buttonIconSize, ((Clay_Hovered() == true && IsMouseButtonPressed(0) == true) ? *onlyRelevantModules = !(*onlyRelevantModules) : 0));
+		
 		// buttons that turns on and off relevant materials
-		DrawToggleButton((String){ .chars = "ModelsListRelevantOn.png", .length = 25 }, (String){ .chars = "ModelsListRelevantOff.png", .length = 26 }, onlyRelevantMaterials, buttonSize);
-		// button to try and create a recolour
-		CLAY_AUTO_ID({ .layout = { .sizing = { .width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_GROW() } } })
-		{
-			DrawButton((String){ .chars = "Recolour.png", .length = 13 }, buttonSize);
-			// if the button is clicked try and create a recolour for the part
-			if (Clay_Hovered() == true && IsMouseButtonPressed(0) == true)
-			{
-				Recolour(part, recolour);
-			}
-		}
+		BUTTON((*onlyRelevantMaterials == true ? (String){ .chars = "ModelsListRelevantOn.png", .length = 25 } : (String){ .chars = "ModelsListRelevantOff.png", .length = 26 }), buttonIconSize, buttonIconSize, ((Clay_Hovered() == true && IsMouseButtonPressed(0) == true) ? *onlyRelevantMaterials = !(*onlyRelevantMaterials) : 0));
+		
+		// button that calls Recolour if pressed
+		BUTTON(((String){ .chars = "Recolour.png", .length = 13 }), buttonIconSize, buttonIconSize, ((Clay_Hovered() == true && IsMouseButtonPressed(0) == true) ? Recolour(part, recolour) : NULL));
 	}
 }
 
@@ -3739,15 +3828,11 @@ void DrawConfig(String config)
 		return;
 	}
 	
-	const int buttonSize = 100;
+	const int printIconSize = 48;
 	CLAY_AUTO_ID({ .cornerRadius = cornerRadius, .layout = { .padding = CLAY_PADDING_ALL(padding), .layoutDirection = CLAY_TOP_TO_BOTTOM, .sizing = { .width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_GROW() } }, .backgroundColor = RaylibToClayColour(WHITE) })
 	{
-		CLAY_AUTO_ID({})
-		{
-			DrawButton((String){ .chars = "Copy.png", .length = 9 }, buttonSize);
-			// if the button is clicked copy the config into the clipboard
-			CopyIfClicked(config);
-		}
+		// a button that if clicked will copy the config into the clipboard
+		BUTTON(((String){ .chars = "Copy.png", .length = 9 }), printIconSize, printIconSize, CopyIfClicked(config));
 	
 		int lineStart = 0;
 		int lineEnd = 0;
@@ -3773,28 +3858,31 @@ void DrawConfig(String config)
 
 void DrawRecolour(RecolourConfig recolour)
 {
-	// create a box to store the horizontal scroll bar
-	CLAY_AUTO_ID({ .layout = { .layoutDirection = CLAY_TOP_TO_BOTTOM, .sizing = { .height = CLAY_SIZING_GROW(), .width = CLAY_SIZING_GROW() } } })
-	{
-		// a scrolling box to put the configs in
-		CLAY(CLAY_ID("Recolour"), { .layout = { .layoutDirection = CLAY_TOP_TO_BOTTOM, .sizing = { .width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_GROW() }, .padding = CLAY_PADDING_ALL(padding), .childGap = padding }, .clip = { .vertical = true, .horizontal = true, .childOffset = Clay_GetScrollOffset() } })
+	EMBOSSED_CONTAINER_INVERSE
+	( CLAY_SIZING_GROW(), CLAY_SIZING_GROW(),
+		// create a box to store the horizontal scroll bar
+		CLAY_AUTO_ID({ .backgroundColor = RaylibToClayColour(WHITE), .layout = { .layoutDirection = CLAY_TOP_TO_BOTTOM, .sizing = { .height = CLAY_SIZING_GROW(), .width = CLAY_SIZING_GROW() } } })
 		{
-			// box to change to left to right layout
-			CLAY_AUTO_ID({ .layout = { .layoutDirection = CLAY_LEFT_TO_RIGHT, .childGap = padding, .sizing = { .width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_GROW() } } })
+			// a scrolling box to put the configs in
+			CLAY(CLAY_ID("Recolour"), { .layout = { .layoutDirection = CLAY_TOP_TO_BOTTOM, .sizing = { .width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_GROW() }, .padding = CLAY_PADDING_ALL(padding), .childGap = padding }, .clip = { .vertical = true, .horizontal = true, .childOffset = Clay_GetScrollOffset() } })
 			{
-				// draw the default config
-				DrawConfig(recolour.defaultConfig);
-				// draw the recolour config
-				DrawConfig(recolour.recolourConfig);
+				// box to change to left to right layout
+				CLAY_AUTO_ID({ .layout = { .layoutDirection = CLAY_LEFT_TO_RIGHT, .childGap = padding, .sizing = { .width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_GROW() } } })
+				{
+					// draw the default config
+					DrawConfig(recolour.defaultConfig);
+					// draw the recolour config
+					DrawConfig(recolour.recolourConfig);
+				}
 			}
+			
+			Clay_String modelsName = MyToClayString((String){ .chars = "Recolour", .length = 9 });
+			DrawHorizontalScrollbar(Clay_GetElementId(modelsName));
 		}
 		
 		Clay_String modelsName = MyToClayString((String){ .chars = "Recolour", .length = 9 });
-		DrawHorizontalScrollbar(Clay_GetElementId(modelsName));
-	}
-	
-	Clay_String modelsName = MyToClayString((String){ .chars = "Recolour", .length = 9 });
-	DrawVerticalScrollbar(Clay_GetElementId(modelsName));
+		DrawVerticalScrollbar(Clay_GetElementId(modelsName));
+	);
 }
 
 //█▀▄▀█ ▄▀█ █ █▄░█
@@ -3820,10 +3908,9 @@ int main(void)
 	Clay_Initialize(clayMemory, (Clay_Dimensions){ .width = GetScreenWidth(), .height = GetScreenHeight() }, (Clay_ErrorHandler){ .errorHandlerFunction = HandleClayErrors, .userData = NULL });
 	Clay_SetMeasureTextFunction(Raylib_MeasureText, fonts);
 	
-	// the set of textures that have been loaded and are ready to use
-	NamedTextureArray sprites = { 0 };
-	LoadSprites(&sprites);
-	spriteAtlas = &sprites;
+	// load all textures in /Sprites into the texture atlas
+	LoadTextureAtlas();
+	LoadEmbossedTextures();
 	
 	// the currently selected part
 	PartInformation selectedPart = { 0 };
@@ -3878,41 +3965,44 @@ int main(void)
 		// enable ui building
 		Clay_BeginLayout();
 		
-		// a window that fills the whole screen
-		CLAY(CLAY_ID("MainWindow"), { .layout = { .layoutDirection = CLAY_TOP_TO_BOTTOM, .sizing = { .width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_GROW() } } })
-		{
-			// buttons to controll the program
-			DrawNavbar(&onlyRelevantMaterials, &onlyRelevantModules, &selectedPart, &recolour);
-			
-			// holds the boxes that hold the functions of the program
-			CLAY(CLAY_ID("Content"), { .layout = { .layoutDirection = CLAY_LEFT_TO_RIGHT, .sizing = { .width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_GROW() } } })
+		EMBOSSED_CONTAINER
+		( CLAY_SIZING_GROW(), CLAY_SIZING_GROW(),
+			// a window that fills the whole screen
+			CLAY(CLAY_ID("MainWindow"), { .layout = { .childGap = padding, .padding = CLAY_PADDING_ALL(padding), .layoutDirection = CLAY_TOP_TO_BOTTOM, .sizing = { .width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_GROW() } } })
 			{
-				// the box that holds the directory navigator
-				CLAY(CLAY_ID("NavigatorBox"), { .layout = { .sizing = { .width = CLAY_SIZING_FIT(), .height = CLAY_SIZING_GROW() } } })
+				// buttons to controll the program
+				DrawNavbar(&onlyRelevantMaterials, &onlyRelevantModules, &selectedPart, &recolour);
+				
+				// holds the boxes that hold the functions of the program
+				CLAY(CLAY_ID("Content"), { .layout = { .childGap = padding, .layoutDirection = CLAY_LEFT_TO_RIGHT, .sizing = { .width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_GROW() } } })
 				{
-					// draw the directory navigator and handle clicking on directories
-					DirectoryNavigator(&selectedPart);
-				}
-				// box that holds the part's module tree
-				CLAY(CLAY_ID("ModuleTreeBox"), { .layout = { .sizing = { .width = CLAY_SIZING_FIT(), .height = CLAY_SIZING_GROW() } } })
-				{
-					// draw the modules
-					DrawPartModules(selectedPart.modules, onlyRelevantModules);
-				}
-				// box that holds the list of the part's models
-				CLAY(CLAY_ID("ModelListBox"), { .layout = { .sizing = { .width = CLAY_SIZING_FIT(), .height = CLAY_SIZING_GROW() } } })
-				{
-					// draw the models
-					DrawModels(selectedPart.models, selectedPart, onlyRelevantMaterials);
-				}
-				// box that holds the recolour configs
-				CLAY(CLAY_ID("RecolourBox"), { .layout = { .sizing = { .width = CLAY_SIZING_FIT(), .height = CLAY_SIZING_GROW() } } })
-				{
-					// draw the recolour config
-					DrawRecolour(recolour);
+					// the box that holds the directory navigator
+					CLAY(CLAY_ID("NavigatorBox"), { .layout = { .sizing = { .width = CLAY_SIZING_FIT(), .height = CLAY_SIZING_GROW() } } })
+					{
+						// draw the directory navigator and handle clicking on directories
+						DirectoryNavigator(&selectedPart);
+					}
+					// box that holds the part's module tree
+					CLAY(CLAY_ID("ModuleTreeBox"), { .layout = { .sizing = { .width = CLAY_SIZING_FIT(), .height = CLAY_SIZING_GROW() } } })
+					{
+						// draw the modules
+						DrawPartModules(selectedPart.modules, onlyRelevantModules);
+					}
+					// box that holds the list of the part's models
+					CLAY(CLAY_ID("ModelListBox"), { .layout = { .sizing = { .width = CLAY_SIZING_FIT(), .height = CLAY_SIZING_GROW() } } })
+					{
+						// draw the models
+						DrawModels(selectedPart.models, selectedPart, onlyRelevantMaterials);
+					}
+					// box that holds the recolour configs
+					CLAY(CLAY_ID("RecolourBox"), { .layout = { .sizing = { .width = CLAY_SIZING_FIT(), .height = CLAY_SIZING_GROW() } } })
+					{
+						// draw the recolour config
+						DrawRecolour(recolour);
+					}
 				}
 			}
-		}
+		);
 		
 		// collect all of the draw commands that are needed to draw the UI
 		Clay_RenderCommandArray renderCommands = Clay_EndLayout(deltaTime);
