@@ -1,13 +1,8 @@
 // TODO list:
-// bug: ../../GameData/TantaresLV/parts/BLOK_E/_AndromedaUS_VernierEngine_1.cfg not recognised as part config
 // bug: ../../GameData/Tantares/parts/core_lk_v2/lk_v2_fuel_tank_s0_1.cfg model data reading does not work
-// bug: ../../GameData/B9_Aerospace_Legacy/Parts/Utility_Landing_Gear_HDG/HDG1L.cfg not recognised as part cfg
-// bug: ../../GameData/B9_Aerospace_Legacy/Parts/Aero_Wing_HW21/part.cfg model not found
-// when parsing modules, more checks for being commented out
 // redo recolouring types and program flow, eg: add TUMaterial type
 // automatically calculate vectors
 // show which areas on a part use what material using the svg's next to ModelData.txt
-// add icons to files depending on type
 // re add lines between parent and child modules
 
 // DONE list:
@@ -31,6 +26,11 @@
 // fix memory leaks
 // add a way to figure out what it will take to recolour a part
 // redo the ui styling
+// add icons to files depending on type
+// bug: ../../GameData/TantaresLV/parts/BLOK_E/_AndromedaUS_VernierEngine_1.cfg not recognised as part config
+// bug: ../../GameData/B9_Aerospace_Legacy/Parts/Utility_Landing_Gear_HDG/HDG1L.cfg not recognised as part cfg
+// bug: ../../GameData/B9_Aerospace_Legacy/Parts/Aero_Wing_HW21/part.cfg model not found
+// when parsing modules, more checks for being commented out
 
 // using clay for the ui
 #define CLAY_IMPLEMENTATION
@@ -219,7 +219,7 @@ const Clay_Color textColour = (Clay_Color){ .r = 0, .b = 0, .g = 0, .a = 255};
 
 // reusable 90's style embossed box
 #define EMBOSSED_CONTAINER(containerWidth, containerHeight, ...)\
-	CLAY_AUTO_ID({ .backgroundColor = RaylibToClayColour(LIGHTGRAY), .layout = { .layoutDirection = CLAY_TOP_TO_BOTTOM, .sizing = { .width = containerWidth, .height = containerHeight } } })\
+	CLAY_AUTO_ID({ .layout = { .layoutDirection = CLAY_TOP_TO_BOTTOM, .sizing = { .width = containerWidth, .height = containerHeight } } })\
 	{																																												\
 		CLAY_AUTO_ID({ .layout = { .layoutDirection = CLAY_LEFT_TO_RIGHT, .sizing = { .width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_FIT() } } })								\
 		{																																											\
@@ -251,7 +251,7 @@ const Clay_Color textColour = (Clay_Color){ .r = 0, .b = 0, .g = 0, .a = 255};
 
 // box with the embossing inverted, so it looks inset
 #define EMBOSSED_CONTAINER_INVERSE(containerWidth, containerHeight, ...)\
-	CLAY_AUTO_ID({ .backgroundColor = RaylibToClayColour(LIGHTGRAY), .layout = { .layoutDirection = CLAY_TOP_TO_BOTTOM, .sizing = { .width = containerWidth, .height = containerHeight } } })\
+	CLAY_AUTO_ID({ .layout = { .layoutDirection = CLAY_TOP_TO_BOTTOM, .sizing = { .width = containerWidth, .height = containerHeight } } })\
 	{																																												\
 		CLAY_AUTO_ID({ .layout = { .layoutDirection = CLAY_LEFT_TO_RIGHT, .sizing = { .width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_FIT() } } })								\
 		{																																											\
@@ -492,6 +492,25 @@ bool IsWhitespace(char c)
 	return false;
 }
 
+// returns the index of the next char that is not whitespace, or -1 if there are no more not whitespace chars
+int IndexOfNextNotWhitespaceChar(String string, int startIndex)
+{
+	if (startIndex > string.length - 1 || startIndex < 0)
+	{
+		return -1;
+	}
+	
+	for (int index = startIndex; index < string.length; index ++)
+	{
+		if (IsWhitespace(string.chars[index]) == false)
+		{
+			return index;
+		}
+	}
+	
+	return -1;
+}
+
 // print that indicates types of whitespace
 void BetterPrint(String string)
 {
@@ -673,7 +692,7 @@ void TrimWhitespace(String * string)
 		// remove the first char
 		string->length -= 1;
 		// copy the rest of the string over the first char
-		memcpy(string->chars, &string->chars[1], sizeof(char) * string->length);
+		memmove(string->chars, &string->chars[1], sizeof(char) * string->length);
 		string->chars = realloc(string->chars, sizeof(char) * string->length);
 	}
 	
@@ -686,6 +705,47 @@ void TrimWhitespace(String * string)
 		ResizeString(string, string->length - 1);
 		// replace the last char with \0
 		string->chars[string->length - 1] = '\0';
+	}
+}
+
+// removes whitespace from a string
+void RemoveWhiteSpace(String * string)
+{
+	for (int index = 0; index < string->length; index ++)
+	{
+		if (IsWhitespace(string->chars[index]) == true)
+		{
+			// move the string after this point on top of the whitespace
+			// V......V.......	7
+			// .string.string\0	15
+			int charsAfterWhitespace = string->length - index - 1;
+			memmove(&string->chars[index], &string->chars[index + 1], sizeof(char) * charsAfterWhitespace);
+			string->length -= 1;
+			index -= 1;
+		}
+	}
+}
+
+// deletes whitespace and \n
+void RemoveWhitespaceAndNewlines(String * string)
+{
+	for (int index = 0; index < string->length; index ++)
+	{
+//		printf("char: ");
+//		BetterPrint((String){ .chars = &string->chars[index], .length = 1});
+		
+		if (IsWhitespace(string->chars[index]) == true || string->chars[index] == '\n')
+		{
+			// printf("is whitespace / \\n\n");
+			// move the string after this point on top of the whitespace
+			// V......V.......	7
+			// .string.string\0	15
+			int charsAfterWhitespace = string->length - index - 1;
+			memmove(&string->chars[index], &string->chars[index + 1], sizeof(char) * charsAfterWhitespace);
+			string->length -= 1;
+			index -= 1;
+		}
+		// printf("is not whitespace / \\n\n");
 	}
 }
 
@@ -781,7 +841,7 @@ void ExtractString(String extractee, String * extracted, int startIndex, int end
 	//	 V	 V
 	//extractee.string
 	
-	// create a new string to put the extracted chars into
+	// resize extracted to put the extracted chars into
 	int extractedLength = endIndex - startIndex + 1;
 	ResizeString(extracted, extractedLength);
 	
@@ -949,10 +1009,15 @@ void ClampStringLength(String string, String * newString, int maxLength)
 }
 
 // returns the index of a key in a key value array
-int IndexOfKey(KeyValueArray array, String key)
+int IndexOfKey(KeyValueArray array, int startIndex, String key)
 {
+	if (startIndex < 0 || startIndex > array.length - 1)
+	{
+		return -1;
+	}
+
 	//printf("keys and values: %d\n", array.length);
-	for (int index = 0; index < array.length; index ++)
+	for (int index = startIndex; index < array.length; index ++)
 	{
 		if (StringsEqual(array.keysValues[index].key, key) == true)
 		{
@@ -967,7 +1032,7 @@ int IndexOfKey(KeyValueArray array, String key)
 void ValueOfKey(KeyValueArray array, String key, String * output)
 {
 	*output = (String){ .chars = NULL, .length = 0 };
-	int keyIndex = IndexOfKey(array, key);
+	int keyIndex = IndexOfKey(array, 0, key);
 	
 	if (keyIndex == -1)
 	{
@@ -1075,77 +1140,124 @@ void ReadFiles(StringArray filePaths, StringArray * output)
 //█▀▀ █▀█ █▄░█ █▀▀ █ █▀▀   █▀▀ █ █░░ █▀▀   █▀█ ▄▀█ █▀█ █▀ █ █▄░█ █▀▀
 //█▄▄ █▄█ █░▀█ █▀░ █ █▄█   █▀░ █ █▄▄ ██▄   █▀▀ █▀█ █▀▄ ▄█ █ █░▀█ █▄█
 
+// removes :NEEDS[xyz]
+void RemoveNeeds(String * string)
+{
+	int colonIndex = IndexOfChar(*string, 0, ':');
+	
+	// if not colon is found
+	if (colonIndex == -1)
+	{
+		return;
+	}
+	
+	// if a colon is found, it is assumed to be the start of a :NEEDS
+	// :NEEDS ends with a ]
+	int needsEndIndex = IndexOfChar(*string, colonIndex, ']') + 1;
+	int needsLength = needsEndIndex - colonIndex;
+	int charsAfterNeeds = string->length - needsEndIndex + 1;
+	
+	printf("charsAfterNeeds: %d\n", charsAfterNeeds);
+	
+	// move the rest of the string over the :NEEDS
+	memmove(&string->chars[colonIndex], &string->chars[colonIndex + needsLength], sizeof(char) * charsAfterNeeds);
+	int newLength = string->length - needsLength;
+	ResizeString(string, newLength);
+}
+
+// removes comments
+void RemoveComments(String * string)
+{
+	// comments start with a // and end with a \n
+	// if a comment is found remove everything from the // to before the \n
+	int commentIndex = 0;
+	int newLineIndex = 0;
+	
+	while (true)
+	{
+		// find the next // and \n
+		commentIndex = IndexOfSubstring(*string, commentIndex, (String){ .chars = "//", .length = 2 });
+		
+		// if there are no more comments
+		if (commentIndex == -1)
+		{
+			return;
+		}
+		
+		// a comment has been found, find the next \n
+		newLineIndex = IndexOfChar(*string, commentIndex, '\n');
+		
+		// no more new line are found, the rest of the string is a comment
+		if (newLineIndex == -1)
+		{
+			// ........V........ 8
+			// string..//comment 8
+			//
+			// cut off the string at the comment
+			ResizeString(string, commentIndex);
+			GarunteeNullTerminator(string);
+			return;
+		}
+		
+		// a comment and subsequent newline has been found, remove everything in between
+		// copy all of the string from the /n to where the // is
+		int commentLength = newLineIndex - commentIndex;
+		int charsAfterComment = string->length - newLineIndex;
+		int newLength = string->length - commentLength;
+		memmove(&string->chars[commentIndex], &string->chars[newLineIndex], sizeof(char) * charsAfterComment);
+		ResizeString(string, newLength);
+	}
+}
+
 // check if a config file is a .cfg for a part
 bool IsPartConfig(String configFile)
 {
-	// look for "PART" in the top-level node
-	int nodeDepth = 0;
+	// look for "PART"
+	String part = (String){ .chars = "PART", .length = 4 };
+	int partIndex = IndexOfSubstring(configFile, 0, part);
 	
-	for (int readIndex = 0; readIndex + 5 < configFile.length; readIndex ++)
+	if (partIndex == -1)
 	{
-		//printf("chars at:\n%d: %c\n%d: %c\n%d: %c\n%d: %c\n%d: %c\n%d: %c\n", readIndex, configFile.chars[readIndex], readIndex + 1, configFile.chars[readIndex + 1], readIndex + 2, configFile.chars[readIndex + 2], readIndex + 3, configFile.chars[readIndex + 3], readIndex + 4, configFile.chars[readIndex + 4], readIndex + 5, configFile.chars[readIndex + 5]);
-		if (configFile.chars[readIndex] == '{')
-		{
-			nodeDepth += 1;
-		}
-		else if (configFile.chars[readIndex] == '}')
-		{
-			nodeDepth -= 1;
-		}
-		
-		// look for PART\n{
-		// or PART\r\n{
-		if (
-			nodeDepth == 0 
-			&& configFile.chars[readIndex] == 'P'
-			&& configFile.chars[readIndex + 1] == 'A'
-			&& configFile.chars[readIndex + 2] == 'R'
-			&& configFile.chars[readIndex + 3] == 'T'
-			&& 
-			((
-				configFile.chars[readIndex + 4] == '\n'
-				&& configFile.chars[readIndex + 5] == '{'
-			) || (
-				configFile.chars[readIndex + 4] == '\r'
-				&& configFile.chars[readIndex + 5] == '\n'
-				&& configFile.chars[readIndex + 6] == '{'
-			)))
-		{
-			printf("is a part config file, found PART\\n{ at: %d\n", readIndex);
-			return true;
-		}
+		printf("no \"PART\", not a config file\n");
+		return false;
 	}
 	
-	printf("not a part config file\n");
+	// find the nearest { and }
+	int openBracketIndex = IndexOfChar(configFile, partIndex, '{');
+	int closeBracketIndex = IndexOfChar(configFile, partIndex, '}');
+	
+	// if the next { is farther than the next }
+	if (closeBracketIndex < openBracketIndex)
+	{
+		printf("next bracket after PART was }, not a config file\n");
+		return false;
+	}
+	
+	// get everything from the PART to the {
+	String partToBracket = (String){ .chars = NULL, .length = 0 };
+	ExtractString(configFile, &partToBracket, partIndex, openBracketIndex);
+	// remove whitespace and \n
+	RemoveWhitespaceAndNewlines(&partToBracket);
+	GarunteeNullTerminator(&partToBracket);
+	RemoveNeeds(&partToBracket);
+	
+//	printf("partToBracket:\n");
+//	BetterPrint(partToBracket);
+	
+	if (StringsEqual(partToBracket, (String){ .chars = "PART{", .length = 6 }) == true)
+	{
+		printf("is a part config file\n");
+		return true;
+	}
+	
+	printf("%s does not = \"PART{\", not a config file\n", partToBracket.chars);
 	return false;
-}
-
-// returns the index of the next //
-int IndexOfNextComment(String configFile, int startIndex)
-{
-	// 012345// (8)
-	// ......^^
-	
-//	printf("length: %d\n", configFile.length);
-//	BetterPrint(configFile);
-	
-	for (int index = startIndex; index < configFile.length - 1; index ++)
-	{
-		if (configFile.chars[index] == '/' && configFile.chars[index + 1] == '/')
-		{
-			return index;
-		}
-		//printf("looking for comment at: %d\n", index);
-	}
-	
-	// no // found
-	return -1;
 }
 
 void ParseModuleProperties(String configFile, int startIndex, int endIndex, Module * module)
 {
 	// between the start and end, parse the properties and values of each line
-	// first off, find the next pair of \n's, everything in between is a line
+	// first off, find the next \n, everything in between it and the last \n is a line
 	// should be in the format: property = value
 	// look for the =
 	// the property will be everything between the = and start of the line (\n)
@@ -1157,72 +1269,49 @@ void ParseModuleProperties(String configFile, int startIndex, int endIndex, Modu
 	// once all properties have been parsed, look for the 'name' propety
 	// and set it as this modules name
 	
-	int lineStart;
+	int lineStart = startIndex;
 	int lineEnd = startIndex;
 	
 	while (lineEnd < endIndex)
 	{
-		// the start and end of the line
-		lineStart = lineEnd;	// end of the last line is the start of the next one
+		// the start and end of the last line
+		lineStart = lineEnd;
 		lineEnd = IndexOfChar(configFile, lineStart + 1, '\n');
 		
-		//printf("new line end: %d\n", lineEnd);
-		//printf("config file length: %d\n", configFile.length);
-		
-		//printf("line end index: %d\n", lineEnd);
-		
-		if (lineStart == -1 || lineEnd == -1)
+		if (lineEnd == -1)
 		{
 			//hit the end of the file
 			return;
 		}
+		// ......V V  6,7
+		// string\n\n
+		
+		// extract the line from the configFile, excluding the \n's
+		String line = (String){ .chars = NULL, .length = 0 };
+		ExtractString(configFile, &line, lineStart + 1, lineEnd - 1);
 		
 		// look for the =
-		int equalsIndex = IndexOfChar(configFile, lineStart, '=');
-		int commentIndex = IndexOfNextComment(configFile, equalsIndex);
+		int equalsIndex = IndexOfChar(line, 0, '=');
 		
-		if (commentIndex == -1)
+		if (equalsIndex == -1 )
 		{
-			// no comment found
-			commentIndex = INT32_MAX;
-		}
-		
-		if (equalsIndex == -1 || equalsIndex > lineEnd || commentIndex < equalsIndex)
-		{
-			// no = found on this line
-			// or line is commented out
+			// no = found on this line, not a property
+			free(line.chars);
 			continue;
 		}
 		
-		//printf("equals index: %d\n", equalsIndex);
-		//printf("line start: %d\n", lineStart);
-		
 		// everything from \n to =
-		String preEquals = { .length = equalsIndex - lineStart - 1, .chars = NULL };
-		preEquals.chars = realloc(preEquals.chars, sizeof(char) * preEquals.length);
-		memcpy(preEquals.chars, &configFile.chars[lineStart + 1], sizeof(char) * preEquals.length);
+		String preEquals = { .length = 0, .chars = NULL };
+		ExtractString(line, &preEquals, 0, equalsIndex - 1);
+		
 		// 0		  12
 		// V		   V
 		//\n....cheese.=.egg...\n
 		
-		//printf("preEquals chars: %d\n", preEquals.length);
-		
-		
-		// find where the value ends
-		int postEqualsEndIndex;
-		if (commentIndex < lineEnd)
-		{
-			postEqualsEndIndex = commentIndex;
-		}
-		else
-		{
-			postEqualsEndIndex = lineEnd;
-		}
-		
-		//everything from = to \n or //
-		String postEquals = { .length = postEqualsEndIndex - equalsIndex - 1, .chars = NULL };
-		postEquals.chars = realloc(postEquals.chars, sizeof(char) * postEquals.length);
-		memcpy(postEquals.chars, &configFile.chars[equalsIndex + 1], sizeof(char) * postEquals.length);
+		//everything from = onwards
+		String postEquals = { .chars = NULL, .length = 0 };
+		ExtractString(line, &postEquals, equalsIndex + 1, line.length - 1);
+		// TODO: free pre / post equals when a new file is parsed
 		//			  12	   20
 		//			 V	   V
 		//\n....cheese.=.egg...\n
@@ -1232,10 +1321,6 @@ void ParseModuleProperties(String configFile, int startIndex, int endIndex, Modu
 		
 		TrimWhitespace(&preEquals);
 		TrimWhitespace(&postEquals);
-		
-		//BetterPrint(preEquals);
-		//printf("=\n");
-		//BetterPrint(postEquals);
 		
 		printf("%s = %s\n", preEquals.chars, postEquals.chars);
 		//printf("line end: %d\n", lineEnd);
@@ -1249,12 +1334,14 @@ void ParseModuleProperties(String configFile, int startIndex, int endIndex, Modu
 		
 		memcpy(module->properties.keysValues[module->properties.length - 1].key.chars, preEquals.chars, sizeof(char) * preEquals.length);
 		memcpy(module->properties.keysValues[module->properties.length - 1].value.chars, postEquals.chars, sizeof(char) * postEquals.length);
+		
+		free(line.chars);
 	}
 	
 	// see if any of the keys are "name"
 	// set the modules name if so
 	String name = (String){ .chars = "name", .length = 5 };
-	int nameIndex = IndexOfKey(module->properties, name);
+	int nameIndex = IndexOfKey(module->properties, 0, name);
 	
 	if (nameIndex != -1)
 	{
@@ -1310,7 +1397,7 @@ void ParseModuleType(String configFile, int bracketIndex, Module * module)
 	
 	// look for a type on the previous line
 	int previousLineStart = LastIndexOfChar(configFile, lineStart - 1, '\n');
-	int previousLineComment = IndexOfNextComment(configFile, previousLineStart);
+	int previousLineComment = IndexOfSubstring(configFile, previousLineStart, (String){ .chars = "//", .length = 2 });
 	
 	if (previousLineComment == -1)
 	{
@@ -1420,36 +1507,56 @@ int ParseModules(String configFile, int moduleStart, Module * currentModule)
 	}
 }
 
-// represents the modules that part.cfg files are made of
-//typedef struct Module
-//{
-//	struct Module * children;
-//	int childCount;
-//	struct Module * parent;
-//	String type;
-//	String * name;				// should point to the value of the property with the key 'name'
-//	KeyValueArray properties;
-//}
-//Module;
+// free the strings that make up the keys and value of the array, and then the array itself
+void FreeKeyValueArray(KeyValueArray * keysValues)
+{
+	for (int index = 0; index < keysValues->length; index ++)
+	{
+		KeyValue keyValue = keysValues->keysValues[index];
+		
+		free(keyValue.key.chars);
+		free(keyValue.value.chars);
+	}
+	
+	free(keysValues->keysValues);
+}
+
+void FreeModule(Module * module)
+{
+	// free each of the children of this module's children
+	for (int index = 0; index < module->children.length; index ++)
+	{
+		FreeModule(&module->children.modules[index]);
+	}
+	// free the children array
+	free(module->children.modules);
+	
+	free(module->type.chars);
+	FreeKeyValueArray(&module->properties);
+	
+}
 
 void BlankModule(Module * module)
 {
+	FreeModule(module);
+	
 	module->children = (ModuleArray){ .modules = NULL, .length = 0 };
 	module->parent = NULL;
-	module->type = (String){ .length = 0, .chars = NULL };
+	module->type = (String){ .chars = NULL, .length = 0 };
 	module->name = NULL;
 	module->properties = (KeyValueArray){ .length = 0, .keysValues = NULL };
 }
 
-//typedef struct PartInformation
-//{
-//	String configFilePath;
-//	String configFileContents;
-//	String modelDataPath;
-//	String modelDataContents;
-//	Module modules;
-//	bool loaded;
-//}
+void BlankPart(PartInformation * part)
+{
+	free(part->configFilePath.chars);
+	free(part->configFileContents.chars);
+	
+	part->configFilePath = (String){ .chars = NULL, .length = 0 };
+	part->configFileContents = (String){ .chars = NULL, .length = 0 };
+	
+	BlankModule(&part->modules);
+}
 
 // loads a .cfg file into part information if it is a config file for a part
 // returns true / false if it succedded or not
@@ -1466,20 +1573,21 @@ bool LoadConfigFile(PartInformation * part, String configFilePath)
 	// if the config is not for a part, throw it out
 	if (IsPartConfig(configFileContents) == false)
 	{
-		ResizeString(&part->configFileContents, 0);
+		free(configFileContents.chars);
 		return false;
 	}
 	
 	// if the file is a part config file, clear the part object, ready for new data to be added to it
-	part->configFilePath = (String){ .chars = NULL, .length = 0 };
-	part->configFileContents = (String){ .chars = NULL, .length = 0 };
-	BlankModule(&part->modules);
+	BlankPart(part);
 	
 	part->configFilePath = configFilePath;
 	part->configFileContents = configFileContents;
 	
 	GarunteeNullTerminator(&part->configFilePath);
 	GarunteeNullTerminator(&part->configFileContents);
+	
+	// get rid of comments
+	RemoveComments(&part->configFileContents);
 	
 	printf("opened config file: %s\n", part->configFilePath.chars);
 	printf("contents:\n%s\n", part->configFileContents.chars);
@@ -1954,11 +2062,34 @@ void ParseModelDatas(ModelArray * models, StringArray modelDatas, StringArray mo
 }
 
 // returns every child module that has a specific name
-//ModuleArray SearchForModuleName(Module * module, String name)
-//{
-//	for (int index = 0; index < module->children.length)
-//}
-//
+void SearchForPropertyKey(Module * module, String key, KeyValueArray * foundProperties)
+{
+	// check if any of the properties have the key
+	int keyIndex = -1;
+	while (true)
+	{
+		keyIndex = IndexOfKey(module->properties, keyIndex + 1, key);
+		
+		// if there are no more properties with this key
+		if (keyIndex == -1)
+		{
+			return;
+		}
+		
+		// if a property has been found with the key, add it to the list of found properties
+		foundProperties->length += 1;
+		foundProperties->keysValues = realloc(foundProperties->keysValues, sizeof(KeyValue) * foundProperties->length);
+		foundProperties->keysValues[foundProperties->length - 1] = module->properties.keysValues[keyIndex];
+	}
+	
+	// check child modules
+	for (int index = 0; index < module->children.length; index ++)
+	{
+		Module * child = &module->children.modules[index];
+		SearchForPropertyKey(child, key, foundProperties);
+	}
+}
+
 // returns every child module that is of a specific type
 void SearchForModuleType(Module * module, String type, ModuleArray * foundModules)
 {
@@ -1978,16 +2109,20 @@ void SearchForModuleType(Module * module, String type, ModuleArray * foundModule
 	}
 }
 
-// returns the file path after the "model =" in each of the models
-void GetModelPaths(ModuleArray models, StringArray * output)
+// returns the file path after the "model =" in each of the model modules
+// and adds the file path of the part config to the start of mesh properties
+// output is in the format: ModName/ect.../ModelName
+void GetModelPaths(ModuleArray modelModules, KeyValueArray meshProperties, PartInformation part, StringArray * output)
 {
-	*output = (StringArray){ .strings = NULL, .length = 0 };
+	output->strings = realloc(output->strings, 0);
+	output->length = 0;
 	
-	for (int index = 0; index < models.length; index ++)
+	// find the path of each of the model modules
+	for (int index = 0; index < modelModules.length; index ++)
 	{
-		Module model = models.modules[index];
+		Module modelModule = modelModules.modules[index];
 		String modelPath = (String){ .chars = NULL, .length = 0 };
-		ValueOfKey(model.properties, (String){ .chars = "model", .length = 6 }, &modelPath);
+		ValueOfKey(modelModule.properties, (String){ .chars = "model", .length = 6 }, &modelPath);
 		
 		if (modelPath.length == 0)
 		{
@@ -1999,20 +2134,70 @@ void GetModelPaths(ModuleArray models, StringArray * output)
 		output->strings = realloc(output->strings, sizeof(String) * output->length);
 		output->strings[output->length - 1] = modelPath;
 	}
+	
+	// find the part of each of the mesh properties
+	String partFilePath = part.configFilePath;
+	for (int index = 0; index < meshProperties.length; index ++)
+	{
+		output->length += 1;
+		output->strings = realloc(output->strings, sizeof(String) * output->length);
+		String * modelPath = &output->strings[output->length - 1];
+		*modelPath = (String){ .chars = NULL, .length = 0 };
+		
+		KeyValue meshProperty = meshProperties.keysValues[index];
+		String modelName = meshProperty.value;
+		
+		// get rid of everything after the last / of the parts file path and add on the name of the model
+		// copy the parts file path so we can edit it
+		ResizeString(modelPath, partFilePath.length);
+		memcpy(modelPath->chars, partFilePath.chars, sizeof(char) * partFilePath.length);
+		
+		int lastSlashIndex = LastIndexOfChar(partFilePath, partFilePath.length - 1, '/');
+		int newLength = lastSlashIndex + modelName.length;
+		ResizeString(modelPath, newLength);
+		memcpy(&modelPath->chars[lastSlashIndex + 1], modelName.chars, sizeof(char) * modelName.length);
+		
+		// get rid of the .mu extenstion if it exists
+		int muIndex = IndexOfSubstring(*modelPath, 0, (String){ .chars = ".mu", .length = 3 });
+		if (muIndex != -1)
+		{
+			ResizeString(modelPath, modelPath->length - 3);
+			GarunteeNullTerminator(modelPath);
+		}
+		
+		// get rid of the leading GameData/, if it exists
+		int gameDataIndex = IndexOfSubstring(*modelPath, 0, (String){ .chars = "GameData/", .length = 9 });
+		if (gameDataIndex != -1)
+		{
+			// move to where gamedata ends
+			gameDataIndex += 9;
+			int charsAfterGamedata = modelPath->length - gameDataIndex;
+			memmove(modelPath->chars, &modelPath->chars[gameDataIndex], charsAfterGamedata);
+			ResizeString(modelPath, modelPath->length - gameDataIndex);
+			GarunteeNullTerminator(modelPath);
+		}
+	}
 }
 
 // load the modelData.txt files associated with the part
 // there will be one for each model the part uses
 void LoadModelData(PartInformation * part)
 {
-	// find all the "MODEL" modules a part
+	// find all the "MODEL" modules a part, which will contain a model
 	ModuleArray modelModules = (ModuleArray){ .modules = NULL, .length = 0 };
 	SearchForModuleType(&part->modules, (String){ .chars = "MODEL", .length = 6 }, &modelModules);
-	printf("found: %d models\n", modelModules.length);
+	printf("\nfound: %d model modules\n", modelModules.length);
 	
-	// find the model paths of the models
+	// models can also be defined with: mesh = model.mu
+	// this is probably only valid in the PART module, but we search the whole tree, just in case
+	KeyValueArray meshProperties = (KeyValueArray){ .keysValues = NULL, .length = 0 };
+	SearchForPropertyKey(&part->modules, (String){ .chars = "mesh", .length = 5 }, &meshProperties);
+	printf("found: %d mesh properties\n", meshProperties.length);
+	// in this case it is assumed that the model.mu is in the same folder as the config file
+	
+	// find the path to each model
 	StringArray modelPaths = (StringArray){ .strings = NULL, .length = 0 };
-	GetModelPaths(modelModules, &modelPaths);
+	GetModelPaths(modelModules, meshProperties, *part, &modelPaths);
 	
 	// covert the model path to the path to their modelData.txt
 	StringArray modelDataPaths = (StringArray){ .strings = NULL, .length = 0 };
@@ -3216,12 +3401,12 @@ void DrawImage(String textureName)
 }
 
 // a button
-// theres gotta be a -4 in CLAY_SIZING_FIXED to account for the width of the embossed container's borders
 #define BUTTON(textureName, buttonWidth, buttonHeight, ...)\
 	EMBOSSED_CONTAINER																								\
 	( CLAY_SIZING_FIXED(buttonWidth), CLAY_SIZING_FIXED(buttonHeight),																						\
 		Clay_Color buttonDefault = RaylibToClayColour(LIGHTGRAY);													\
 		Clay_Color buttonHovered = RaylibToClayColour(DARKBLUE);													\
+		/*theres gotta be a -4 in CLAY_SIZING_FIXED to account for the width of the embossed container's borders*/	\
 		Clay_LayoutConfig buttonLayout = (Clay_LayoutConfig){ .sizing = { .height = CLAY_SIZING_FIXED(buttonHeight - 4), .width = CLAY_SIZING_FIXED(buttonWidth - 4) }, .layoutDirection = CLAY_TOP_TO_BOTTOM, .childAlignment = { .x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER }, .childGap = padding, .padding = CLAY_PADDING_ALL(padding) };\
 																													\
 		CLAY_AUTO_ID({ .backgroundColor = Clay_Hovered() ? buttonHovered : buttonDefault, .layout = buttonLayout })	\
@@ -3569,7 +3754,7 @@ void DirectoryNavigator(PartInformation * part)
 	EMBOSSED_CONTAINER_INVERSE
 	( CLAY_SIZING_GROW(), CLAY_SIZING_GROW(),
 		// create a box to store the horizontal scroll bar
-		CLAY_AUTO_ID({ .layout = { .layoutDirection = CLAY_TOP_TO_BOTTOM, .sizing = { .height = CLAY_SIZING_GROW(), .width = CLAY_SIZING_GROW() } } })
+		CLAY_AUTO_ID({ .backgroundColor = RaylibToClayColour(WHITE), .layout = { .layoutDirection = CLAY_TOP_TO_BOTTOM, .sizing = { .height = CLAY_SIZING_GROW(), .width = CLAY_SIZING_GROW() } } })
 		{
 			// create a scrolling box to display the directories entries in
 			CLAY(CLAY_ID("DirectoryNavigator"), { .layout = { .sizing = { .width = CLAY_SIZING_FIXED(directoryNavigatorWidth), .height = CLAY_SIZING_GROW() }, .padding = CLAY_PADDING_ALL(padding), .childGap = padding, .layoutDirection = CLAY_TOP_TO_BOTTOM}, .clip = { .vertical = true, .horizontal = true, .childOffset = Clay_GetScrollOffset() } })
@@ -3578,7 +3763,7 @@ void DirectoryNavigator(PartInformation * part)
 				while (entry != NULL)
 				{
 					// draw a button with the name of the directory entry
-					CLAY_AUTO_ID({ .backgroundColor = Clay_Hovered() ? directoryBackgroundHovered : directoryBackground, .layout = { .sizing = { .width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_FIT() } } })
+					CLAY_AUTO_ID({ .backgroundColor = Clay_Hovered() ? directoryBackgroundHovered : directoryBackground, .layout = { .childGap = padding, .sizing = { .width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_FIT() } } })
 					{
 						// copy the directories name out of the dirent and add a null terminator
 						String directoryName = (String){ .length = strlen(entry->d_name), .chars = malloc(strlen(entry->d_name)) };
