@@ -1,9 +1,9 @@
 // TODO list:
 // bug: ../../GameData/Tantares/parts/core_lk_v2/lk_v2_fuel_tank_s0_1.cfg model data reading does not work
-// redo recolouring types and program flow, eg: add TUMaterial type
 // automatically calculate vectors
 // show which areas on a part use what material using the svg's next to ModelData.txt
 // re add lines between parent and child modules
+// fix memory leaks
 
 // DONE list:
 // draw module tree vertically instead of horizontally
@@ -31,6 +31,7 @@
 // bug: ../../GameData/B9_Aerospace_Legacy/Parts/Utility_Landing_Gear_HDG/HDG1L.cfg not recognised as part cfg
 // bug: ../../GameData/B9_Aerospace_Legacy/Parts/Aero_Wing_HW21/part.cfg model not found
 // when parsing modules, more checks for being commented out
+// redo recolouring types and program flow, eg: add textureSet type
 
 // using clay for the ui
 #define CLAY_IMPLEMENTATION
@@ -396,8 +397,7 @@ void IntToString(int i, String * output)
 	// null terminator and the minus if negative
 	// find how many significant figures the int has 
 	int significantFigures = SignificantFigures(i);
-	int nullByte = 1;
-	int outputLength = significantFigures + negative + nullByte;
+	int outputLength = significantFigures + negative + nullTerminator;
 	*output = (String){ .chars = realloc(output->chars, sizeof(char) * outputLength), .length = outputLength };
 
 	//printf("output length: %d\n", outputLength);
@@ -2233,6 +2233,7 @@ ModelMesh * GetMeshWithId(PartInformation part, int id)
 		}
 	}
 	
+	printf("WARNING: failed to find mesh with id: %d\n", id);
 	return NULL;
 }
 
@@ -2477,8 +2478,8 @@ void NavigateDirectory(String * selectedDirectory, String clickedDirectory, Part
 	return;
 }
 
-//█▀ █▀█ █▀█ █ ▀█▀ █▀▀ █▀
-//▄█ █▀▀ █▀▄ █ ░█░ ██▄ ▄█ (textures)
+//▀█▀ █▀▀ ▀▄▀ ▀█▀ █░█ █▀█ █▀▀ █▀
+//░█░ ██▄ █░█ ░█░ █▄█ █▀▄ ██▄ ▄█
 
 // loads all of the images in the textures directory into the texture atlas
 void LoadTextureAtlas()
@@ -2495,7 +2496,11 @@ void LoadTextureAtlas()
 	
 	// create the texture atlas
 	NamedTextureArray * textures = malloc(sizeof(NamedTextureArray));
+	textures->length = 1;
 	textures->textures = malloc(sizeof(NamedTexture));
+	// set a pink square as the first textures, this will be used if a texture cannot be found in the atlas
+	textures->textures[0] = (NamedTexture){ .name = "_NOT_FOUND", .texture = LoadTextureFromImage(GenImageColor(10, 10, MAGENTA)) };
+	
 	textureAtlas = textures;
 	
 	// read all of the entries in the directory and load all .png files as textures
@@ -2558,9 +2563,8 @@ Texture * GetTextureWithName(String name)
 //	printf("could not find texture: ");
 //	BetterPrint(name);
 	
-	// return a pink square if no texture was found
-	Texture * notFound = malloc(sizeof(Texture));	// this should only run if something goes wrong, so i'm not going to worry about freeing this
-	*notFound = LoadTextureFromImage(GenImageColor(10, 10, MAGENTA));
+	// return the first texture, which should be a pink square
+	Texture * notFound = &textureAtlas->textures[0].texture;
 	
 	return notFound;
 }
@@ -2590,11 +2594,103 @@ void LoadEmbossedTextures()
 //█▀█ █▀▀ █▀▀ █▀█ █░░ █▀█ █░█ █▀█ █ █▄░█ █▀▀
 //█▀▄ ██▄ █▄▄ █▄█ █▄▄ █▄█ █▄█ █▀▄ █ █░▀█ █▄█
 
+// ModelMaterial => textureSwitch with 2x textureSets
+// textureSets => recolour configs
+
+// list of ksp's built in shaders: https://forum.kerbalspaceprogram.com/topic/83971-list-of-loaded-shaders/#findComment-4037180
+
+// relevant shader types that show up on parts:
+// KSP/Diffuse
+// KSP/Specular
+// KSP/Specular (Transparent)
+// KSP/Bumped
+// KSP/Bumped Specular
+// KSP/Bumped Specular (Mapped)
+// KSP/Bumped Specular (Stencil)
+// KSP/Bumped Specular (Transparent)
+// KSP/Emissive/Bumped Specular
+// KSP/Emissive/Bumped Specular (Mapped)
+// KSP/Emissive/Diffuse
+// KSP/Emissive/Specular
+
+// irelevant shader types that show up on parts:
+// KSP/Alpha/ect...
+// KSP/Particles/ect...
+
+// everything else shouldnt show up on parts, or i don't know about it
+
+typedef enum ShaderType
+{
+	DIFFUSE,
+	SPECULAR,
+	SPECULAR_TRANSPARENT,
+	BUMPED,
+	BUMPED_SPECULAR,
+	BUMPED_SPECULAR_MAPPED,
+	BUMPED_SPECULAR_STENCIL,	// idk what this one is, never seen it in the wild
+	BUMPED_SPECULAR_TRANSPARENT,
+	EMISSIVE_BUMPED_SPECULAR,
+	EMISSIVE_BUMPED_SPECULAR_MAPPED,
+	EMISSIVE_DIFFUSE,
+	EMISSIVE_SPECULAR,
+	IRRELEVANT,			// the exact type of irrelevant shaders does not need to be known
+	UNKNOWN,
+	// VV tu shaders VV
+	TU_METALLIC,
+	TU_SPECULAR,
+	TU_LEGACY,
+	TU_TRANSPARENT_METALLIC,
+	TU_TRANSPARENT_SPECULAR,
+	TU_TRANSPARENT_LEGACY,
+	TU_DIFFUSE,				// not a real shader, indicates that the original material used ksp/diffuse and therfore has no specular map in its _maintex, and needs a new one
+	// VV resurfaced shaders VV
+	RESURFACED,			// TODO: handling for the different types of resurfaced shaders
+	// VV shaddy shaders VV
+	SHADDY							// TODO: handling for the different types of shaddy shaders
+}
+ShaderType;
+
+// relevant
+String diffuse = (String){ .chars = "KSP/Diffuse", .length = 12 };
+String specular = (String){ .chars = "KSP/Specular", .length = 13 };
+String specularTransparent = (String){ .chars = "KSP/Specular (Transparent)", .length = 27 };
+String bumped = (String){ .chars = "KSP/Bumped", .length = 11 };
+String bumpedSpecular = (String){ .chars = "KSP/Bumped Specular", .length = 20 };
+String bumpedSpecularMapped = (String){ .chars = "KSP/Bumped Specular (Mapped)", .length = 29 };
+String bumpedSpecularStencil = (String){ .chars = "KSP/Bumped Specular (Stencil)", .length = 30 };
+String bumpedSpecularTransparent = (String){ .chars = "KSP/Bumped Specular (Transparent)", .length = 34 };
+String emissiveBumpedSpecular = (String){ .chars = "KSP/Emissive/Bumped Specular", .length = 29 };
+String emissiveBumpedSpecularMapped = (String){ .chars = "KSP/Emissive/Bumped Specular (Mapped)", .length = 38 };
+String emissiveDiffuse = (String){ .chars = "KSP/Emissive/Diffuse", .length = 21 };
+String emissiveSpecular = (String){ .chars = "KSP/Emissive/Specular", .length = 22 };
+
+String tuMetallic = (String){ .chars = "TU/Metallic", .length = 12 };
+String tuSpecular = (String){ .chars = "TU/Specular", .length = 12 };
+String tuLegacy = (String){ .chars = "TU/Legacy", .length = 10 };
+String tuTransparentMetallic = (String){ .chars = "TU/Transparent/Metallic", .length = 24 };
+String tuTransparentSpecular = (String){ .chars = "TU/Transparent/Specular", .length = 24 };
+String tuTransparentLegacy = (String){ .chars = "TU/Transparent/Legacy", .length = 22 };
+
+String resurfaced = (String){ .chars = "Resurfaced", .length = 10 };
+String shaddy = (String){ .chars = "Shaddy", .length = 7 };
+
+// irrelevant
+// lengths are one less than normal because we dont want to include the null terminator
+String alpha = (String){ .chars = "KSP/Alpha", .length = 9 };
+String particles = (String){ .chars = "KSP/Particles", .length = 13 };
+
+// texture sets, used for reconstructing the default material of the part
+// and for recolouring the part
 typedef struct TextureSet
 {
 	String name;
 	String title;			// this is what the texture set is called in game
-	ModelMaterial * material;
+	// VV material properties VV
+	bool recolourable;
+	String shaderName;
+	ShaderType shaderType;
+	StringArray meshNames;
+	KeyValueArray properties;
 }
 TextureSet;
 
@@ -2613,61 +2709,13 @@ typedef struct TextureSwitch
 }
 TextureSwitch;
 
+// all the switches of a single part
 typedef struct TextureSwitchArray
 {
 	TextureSwitch * textureSwitches;
 	int length;
 }
 TextureSwitchArray;
-
-// list of shaders: https://forum.kerbalspaceprogram.com/topic/83971-list-of-loaded-shaders/#findComment-4037180
-
-// relevant shader types:
-// KSP/Specular
-// KSP/Diffuse
-// KSP/Bumped
-// KSP/Bumped Specular
-// KSP/Bumped Specular (Mapped)
-// KSP/Emissive/Bumped Specular
-// KSP/Emissive/Bumped Specular (Mapped)
-// KSP/Emissive/Diffuse
-// KSP/Emissive/Specular
-
-// trouble: afaik this shader probably cant be properly replicated with recolourable TU shaders
-// KSP/Bumped Specular (Transparent)
-
-// irelevant shader types:
-// KSP/Alpha/CutoffDrawNavbar
-// KSP/Alpha/Cutoff Bumped
-// KSP/Alpha/CutoffBackground
-// KSP/Alpha/Translucent
-// KSP/Alpha/Translucent Additive
-// KSP/Alpha/Translucent Specular
-// KSP/Alpha/Unlit Transparent
-// KSP/Particles/Additive
-// KSP/Particles/Additive (Self-Illuminated)
-// KSP/Particles/Additive (Soft)
-// KSP/Particles/Alpha Blended
-// KSP/Particles/Alpha Blended Scenery
-
-// everything else is unknown
-
-typedef enum ShaderType
-{
-	SPECULAR,
-	DIFFUSE,
-	BUMPED,
-	BUMPED_SPECULAR,
-	BUMPED_SPECULAR_MAPPED,
-	BUMPED_SPECULAR_TRANSPARENT,
-	EMISSIVE_BUMPED_SPECULAR,
-	EMISSIVE_BUMPED_SPECULAR_MAPPED,
-	EMISSIVE_DIFFUSE,
-	EMISSIVE_SPECULAR,
-	IRRELEVANT,			// the exact type of irrelevant shaders does not need to be known
-	UNKNOWN
-}
-ShaderType;
 
 // find the shader used by the material that a mesh uses
 ShaderType GetShaderType(ModelMaterial material)
@@ -2680,54 +2728,36 @@ ShaderType GetShaderType(ModelMaterial material)
 	printf("uses shader: ");
 	BetterPrint(shaderName);
 	
-	// KSP/Specular
-	// KSP/Diffuse
-	// KSP/Bumped
-	// KSP/Bumped Specular
-	// KSP/Bumped Specular (Mapped)
-	// KSP/Emissive/Bumped Specular
-	// KSP/Emissive/Bumped Specular (Mapped)
-	// KSP/Emissive/Diffuse
-	// KSP/Emissive/Specular
-	
-	// relevant
-	String specular = (String){ .chars = "KSP/Specular", .length = 13 };
-	String diffuse = (String){ .chars = "KSP/Diffuse", .length = 12 };
-	String bumped = (String){ .chars = "KSP/Bumped", .length = 11 };
-	String bumpedSpecular = (String){ .chars = "KSP/Bumped Specular", .length = 20 };
-	String bumpedSpecularMapped = (String){ .chars = "KSP/Bumped Specular (Mapped)", .length = 29 };
-	String emissiveBumpedSpecular = (String){ .chars = "KSP/Emissive/Bumped Specular", .length = 29 };
-	String emissiveBumpedSpecularMapped = (String){ .chars = "KSP/Emissive/Bumped Specular (Mapped)", .length = 38 };
-	String emissiveDiffuse = (String){ .chars = "KSP/Emissive/Diffuse", .length = 21 };
-	String emissiveSpecular = (String){ .chars = "KSP/Emissive/Specular", .length = 22 };
-	// trouble
-	String bumpedSpecularTransparent = (String){ .chars = "KSP/Bumped Specular (Transparent)", .length = 34 };
 	// irrelevant
-	// lengths are one less than normal because we dont want to include the null terminator
-	String alpha = (String){ .chars = "KSP/Alpha", .length = 9 };
-	String particles = (String){ .chars = "KSP/Particles", .length = 13 };
-	
-	// trouble
-	if (StringsEqual(shaderName, bumpedSpecularTransparent) == true)
-	{
-		printf("WARNING: material: %s uses the KSP/Bumped Specular (Transparent) shader type, recolouring may not be possibe\n", material.materialName.chars);
-		return BUMPED_SPECULAR_TRANSPARENT;
-	}
-	// irrelevant
-	else if (StringStartsWith(shaderName, alpha) == true || StringStartsWith(shaderName, particles) == true)
+	if (StringStartsWith(shaderName, alpha) == true || StringStartsWith(shaderName, particles) == true)
 	{
 		printf("material: %s uses irrelevant shader type: %s\n", material.materialName.chars, shaderName.chars);
 		return IRRELEVANT;
 	}
+	// not suppoted
+	else if (StringStartsWith(shaderName, resurfaced) == true)
+	{
+		printf("WARNING: material: %s uses unsupported shader type: %s\n", material.materialName.chars, shaderName.chars);
+		return RESURFACED;
+	}
+	else if (StringStartsWith(shaderName, shaddy) == true)
+	{
+		printf("WARNING: material: %s uses unsupported shader type: %s\n", material.materialName.chars, shaderName.chars);
+		return SHADDY;
+	}
 	
 	// theres gotta be a better way to do this
+	else if (StringsEqual(shaderName, diffuse) == true)
+	{
+		return DIFFUSE;
+	}
 	else if (StringsEqual(shaderName, specular) == true)
 	{
 		return SPECULAR;
 	}
-	else if (StringsEqual(shaderName, diffuse) == true)
+	else if (StringsEqual(shaderName, specularTransparent) == true)
 	{
-		return DIFFUSE;
+		return SPECULAR_TRANSPARENT;
 	}
 	else if (StringsEqual(shaderName, bumped) == true)
 	{
@@ -2740,6 +2770,14 @@ ShaderType GetShaderType(ModelMaterial material)
 	else if (StringsEqual(shaderName, bumpedSpecularMapped) == true)
 	{
 		return BUMPED_SPECULAR_MAPPED;
+	}
+	else if (StringsEqual(shaderName, bumpedSpecularStencil) == true)
+	{
+		return BUMPED_SPECULAR_STENCIL;
+	}
+	else if (StringsEqual(shaderName, bumpedSpecularTransparent) == true)
+	{
+		return BUMPED_SPECULAR_TRANSPARENT;
 	}
 	else if (StringsEqual(shaderName, emissiveBumpedSpecular) == true)
 	{
@@ -2757,9 +2795,115 @@ ShaderType GetShaderType(ModelMaterial material)
 	{
 		return EMISSIVE_SPECULAR;
 	}
+	else if (StringsEqual(shaderName, tuMetallic) == true)
+	{
+		return TU_METALLIC;
+	}
+	else if (StringsEqual(shaderName, tuSpecular) == true)
+	{
+		return TU_SPECULAR;
+	}
+	else if (StringsEqual(shaderName, tuLegacy) == true)
+	{
+		return TU_LEGACY;
+	}
+	else if (StringsEqual(shaderName, tuTransparentMetallic) == true)
+	{
+		return TU_TRANSPARENT_METALLIC;
+	}
+	else if (StringsEqual(shaderName, tuTransparentSpecular) == true)
+	{
+		return TU_TRANSPARENT_SPECULAR;
+	}
+	else if (StringsEqual(shaderName, tuTransparentLegacy) == true)
+	{
+		return TU_TRANSPARENT_LEGACY;
+	}
 	
 	printf("WARNING: material: %s uses unknown shader type: %s automatic recolor creation not possible\n", material.materialName.chars, shaderName.chars);
 	return UNKNOWN;
+}
+
+// selects an appropritare recolour shader depending on the the original shader type
+ShaderType SelectRecolourShaderType(ShaderType original)
+{
+	if (original == DIFFUSE || original == EMISSIVE_DIFFUSE || original == BUMPED)
+	{
+		return TU_DIFFUSE;
+	}
+	else if (original == SPECULAR || original == BUMPED_SPECULAR || original == BUMPED_SPECULAR_MAPPED || original == EMISSIVE_BUMPED_SPECULAR || original == EMISSIVE_BUMPED_SPECULAR_MAPPED || original == EMISSIVE_SPECULAR || original == BUMPED_SPECULAR_STENCIL)
+	{
+		return TU_SPECULAR;
+	}
+	else if (original == SPECULAR_TRANSPARENT || original == BUMPED_SPECULAR_TRANSPARENT)
+	{
+		return TU_TRANSPARENT_SPECULAR;
+	}
+	else if (original == TU_LEGACY || original == TU_METALLIC || original == TU_SPECULAR || original == TU_TRANSPARENT_LEGACY || original == TU_TRANSPARENT_METALLIC || original == TU_TRANSPARENT_SPECULAR)
+	{
+		return original;
+	}
+	// i'm not actually sure which resurfaced / shaddy shader is used
+	// so for now i'm just assuming it can use the tu specular for recoulouring
+	else if (original == RESURFACED || original == SHADDY)
+	{
+		return TU_SPECULAR;
+	}
+	else if (original == UNKNOWN)
+	{
+		printf("WARNING: trying to recolour unknown shader type: %d unknown.\n", original);
+		return TU_SPECULAR;
+	}
+	else if (original == IRRELEVANT)
+	{
+		printf("WARNING: trying to recolour irrelevant shader: %d.\n", original);
+		return TU_SPECULAR;
+	}
+	else
+	{
+		// this should never run
+		printf("ERROR: this should never run, call the dev!\n");
+		return TU_SPECULAR;
+	}
+}
+
+// returns the name associated with the shader types used for recolouring
+void RecolourShaderTypeName(ShaderType type, String * name)
+{
+	switch (type)
+	{
+		case TU_DIFFUSE:
+			*name = tuSpecular;
+			break;
+			
+		case TU_LEGACY:
+			*name = tuLegacy;
+			break;
+			
+		case TU_SPECULAR:
+			*name = tuSpecular;
+			break;
+			
+		case TU_METALLIC:
+			*name = tuMetallic;
+			break;
+			
+		case TU_TRANSPARENT_LEGACY:
+			*name = tuTransparentLegacy;
+			break;
+			
+		case TU_TRANSPARENT_SPECULAR:
+			*name = tuTransparentSpecular;
+			break;
+			
+		case TU_TRANSPARENT_METALLIC:
+			*name = tuTransparentMetallic;
+			break;
+			
+		default:
+			printf("WARNING: type not used for recolouring.\n");
+			*name = tuSpecular;
+	}
 }
 
 // checks if two materials are equal
@@ -2807,148 +2951,427 @@ int IndexOfMaterial(MaterialArray materials, ModelMaterial material)
 	return -1;
 }
 
-// add the properties of a material to the default patch
-void AddDefaultProperties(ModelMaterial material, String * patch)
+// the material will have some textures
+String mainTex = (String){ .chars = "_MainTex", .length = 9 };
+String bumpMap = (String){ .chars = "_BumpMap", .length = 9 };
+String emissive = (String){ .chars = "_Emissive", .length = 10 };
+String metalMap = (String){ .chars = "_MetalMap", .length = 10 };
+String specMap = (String){ .chars = "_SpecMap", .length = 9 };
+
+// in a texture set these are written:
+// texture = _MainTex,Tantares/parts/core_vostok/a1
+
+bool PropertyIsTexture(KeyValue property)
 {
-	// the material will have some textures
-	String mainTex = (String){ .chars = "_MainTex", .length = 9 };
-	String bumpMap = (String){ .chars = "_BumpMap", .length = 9 };
-	String emissive = (String){ .chars = "_Emissive", .length = 10 };
-	String metalMap = (String){ .chars = "_MetalMap", .length = 10 };
-	String specMap = (String){ .chars = "_SpecMap", .length = 9 };
-	StringArray textureTypes = (StringArray){ .strings = malloc(sizeof(String) * 5), .length = 5 };
-	textureTypes.strings[0] = mainTex;
-	textureTypes.strings[1] = bumpMap;
-	textureTypes.strings[2] = emissive;
-	textureTypes.strings[3] = metalMap;
-	textureTypes.strings[4] = specMap;
+	if (StringsEqual(property.key, mainTex) == true || StringsEqual(property.key, bumpMap) == true || StringsEqual(property.key, emissive) == true || StringsEqual(property.key, metalMap) == true || StringsEqual(property.key, specMap) == true)
+	{
+		return true;
+	}
 	
-	// in a texture set these are written:
-	// texture = _MainTex,Tantares/parts/core_vostok/a1
-	
-	// the material will have some other properties
-	// single floats with values like: 0.4
-	String shininess = (String){ .chars = "_Shininess", .length = 11 };
-	String metalness = (String){ .chars = "_Metalness", .length = 11 };
-	String smoothness = (String){ .chars = "_Smoothness", .length = 12 };
-	String metalAlbedoMultiplier = (String){ .chars = "_MetalAlbedoMultiplier", .length = 23 };
-	StringArray floatProperties = (StringArray){ .strings = malloc(sizeof(String) * 4), .length = 4 };
-	floatProperties.strings[0] = shininess;
-	floatProperties.strings[1] = metalness;
-	floatProperties.strings[2] = smoothness;
-	floatProperties.strings[3] = metalAlbedoMultiplier;
-	
-	// written as:
+	return false;
+}
+
+// the material will have some single floats with values like: 0.4
+String shininess = (String){ .chars = "_Shininess", .length = 11 };
+String metalness = (String){ .chars = "_Metalness", .length = 11 };
+String smoothness = (String){ .chars = "_Smoothness", .length = 12 };
+String metalAlbedoMultiplier = (String){ .chars = "_MetalAlbedoMultiplier", .length = 23 };
+
+// written as:
 //	PROPERTY
 //	{
 //		name = _Shininess
 //		float = 0.4
 //	}
 
-	// four float colours with values like: (1.0, 1.0, 1.0, 1.0)
-	String color = (String){ .chars = "_Color", .length = 7 };
-	String emissiveColor = (String){ .chars = "_EmissiveColor", .length = 15 };
-	StringArray colourProperties = (StringArray){ .strings = malloc(sizeof(String) * 2), .length = 2 };
-	colourProperties.strings[0] = color;
-	colourProperties.strings[1] = emissiveColor;
+bool PropertyIsFloat(KeyValue property)
+{
+	if (StringsEqual(property.key, shininess) == true || StringsEqual(property.key, metalness) == true || StringsEqual(property.key, smoothness) == true || StringsEqual(property.key, metalAlbedoMultiplier) == true)
+	{
+		return true;
+	}
 	
-	// written as:
+	return false;
+}
+
+// four float colours with values like: (1.0, 1.0, 1.0, 1.0)
+String color = (String){ .chars = "_Color", .length = 7 };
+String emissiveColor = (String){ .chars = "_EmissiveColor", .length = 15 };
+
+// written as:
 //	PROPERTY
 //	{
 //		name = _Color
 //		color = 1.0, 1.0, 1.0, 1.0
 //	}
 
-	// there are also a bunch of propeties that are probably irrelevant
-	String renderType = (String){ .chars = "Render Type", .length = 12 };
-	String materialNumber = (String){ .chars = "Material #", .length = 11 };
-	String renderQueue = (String){ .chars = "RenderQueue", .length = 12 };
-	String mainTexOffset = (String){ .chars = "_MainTexOffset", .length = 15 };
-	String bumpMapOffset = (String){ .chars = "_BumpMapOffset", .length = 15 };
-	String emissiveOffset = (String){ .chars = "_EmissiveOffset", .length = 16 };
-	StringArray irrelevantProperties = (StringArray){ .strings = malloc(sizeof(String) * 6), .length = 6 };
-	irrelevantProperties.strings[0] = renderType;
-	irrelevantProperties.strings[1] = materialNumber;
-	irrelevantProperties.strings[2] = renderQueue;
-	irrelevantProperties.strings[3] = mainTexOffset;
-	irrelevantProperties.strings[4] = bumpMapOffset;
-	irrelevantProperties.strings[5] = emissiveOffset;
-	
-	// depending on the property type add them correctly
-	for (int index = 0; index < material.properties.length; index ++)
+bool PropertyIsColor(KeyValue property)
+{
+	if (StringsEqual(property.key, color) == true || StringsEqual(property.key, emissiveColor) == true)
 	{
-		String property = material.properties.keysValues[index].key;
-		String value = material.properties.keysValues[index].value;
-		
-		if (StringEqualToAny(property, textureTypes) == true)
-		{
-			AddToString(patch, (String){ .chars = "\n		texture = ", .length = 14 });
-			AddToString(patch, property);
-			AddToString(patch, (String){ .chars = ",", .length = 2});
-			AddToString(patch, value);
-			continue;
-		}
-		
-		if (StringEqualToAny(property, floatProperties) == true)
-		{
-			AddToString(patch, (String){ .chars = "\n		PROPERTY\n		{\n			name = ", .length = 27 });
-			AddToString(patch, property);
-			AddToString(patch, (String){ .chars = "\n			float = ", .length = 13 });
-			AddToString(patch, value);
-			AddToString(patch, (String){ .chars = "\n		}", .length = 5 });
-			continue;
-		}
-		
-		if (StringEqualToAny(property, colourProperties) == true)
-		{
-			AddToString(patch, (String){ .chars = "\n		PROPERTY\n		{\n			name = ", .length = 27 });
-			AddToString(patch, property);
-			AddToString(patch, (String){ .chars = "\n			color = ", .length = 13 });
-			
-			// get rid of the ( ) around the value
-			// (1.0, 1.0, 1.0, 1.0) 20
-			// 1.0, 1.0, 1.0, 1.0	18
-			String cleanedValue = (String){ .chars = malloc(sizeof(char) * 18), .length = 18 };
-			memcpy(cleanedValue.chars, &value.chars[1], sizeof(char) * cleanedValue.length);
-			
-			AddToString(patch, cleanedValue);
-			AddToString(patch, (String){ .chars = "\n		}", .length = 5 });
-			
-			free(cleanedValue.chars);
-			continue;
-		}
-		
-		if (StringEqualToAny(property, irrelevantProperties) == true)
-		{
-			printf("property type: %s is irrelevant, skipping\n", property.chars);
-			continue;
-		}
-		
-		printf("WARNING: property type: %s is unknown, skipping\n", property.chars);
+		return true;
 	}
 	
-	free(textureTypes.strings);
-	free(floatProperties.strings);
-	free(colourProperties.strings);
-	free(irrelevantProperties.strings);
+	return false;
+}
+
+// two float offsets with values like: (0, 0)
+String mainTexOffset = (String){ .chars = "_MainTexOffset", .length = 15 };
+String bumpMapOffset = (String){ .chars = "_BumpMapOffset", .length = 15 };
+String emissiveOffset = (String){ .chars = "_EmissiveOffset", .length = 16 };
+
+// written as:
+// TODO: find how these are written, i saw it in the TU code somewhere once, but it cant find it again :(
+
+bool PropertyIsOffset(KeyValue property)
+{
+	if (StringsEqual(property.key, mainTexOffset) == true || StringsEqual(property.key, bumpMapOffset) == true || StringsEqual(property.key, emissiveOffset) == true)
+	{
+		return true;
+	}
+	
+	return false;
+}
+
+// TU shaders have three float vectors
+String diffuseNorm = (String){ .chars = "_DiffuseNorm", .length = 13 };
+String metalNorm = (String){ .chars = "_MetalNorm", .length = 11 };
+String specularNorm = (String){ .chars = "_SpecularNorm", .length = 14 };
+String smoothnessNorm = (String){ .chars = "_SmoothnessNorm", .length = 16 };
+
+// written as:
+// TODO: find out how these are written
+
+bool PropertyIsVector(KeyValue property)
+{
+	if (StringsEqual(property.key, diffuseNorm) == true || StringsEqual(property.key, metalNorm) == true || StringsEqual(property.key, specularNorm) == true || StringsEqual(property.key, smoothnessNorm) == true)
+	{
+		return true;
+	}
+	
+	return false;
+}
+
+// there are also some propeties that are probably irrelevant
+String renderType = (String){ .chars = "Render Type", .length = 12 };
+String materialNumber = (String){ .chars = "Material #", .length = 11 };
+String renderQueue = (String){ .chars = "RenderQueue", .length = 12 };
+
+bool PropertyIsIrrelevant(KeyValue property)
+{
+	if (StringsEqual(property.key, renderType) == true || StringsEqual(property.key, materialNumber) == true || StringsEqual(property.key, renderQueue) == true)
+	{
+		return true;
+	}
+	
+	return false;
+}
+
+// check if this property is known about to the program
+bool PropertyIsKnown(KeyValue property)
+{
+	if (PropertyIsColor(property) == true || PropertyIsFloat(property) == true || PropertyIsIrrelevant(property) == true || PropertyIsOffset(property) == true || PropertyIsVector(property) == true || PropertyIsTexture(property) == true)
+	{
+		return true;
+	}
+	
+	return false;
+}
+
+// default values
+String renderTypeDefault = (String){ .chars = "MeshRenderer", .length = 13 };
+String materialNumberDefault = (String){ .chars = "0", .length = 2 };
+String renderQueueDefault = (String){ .chars = "2000", .length = 5 };
+String offsetDefault = (String){ .chars = "(0.0, 0.0)", .length = 11 };
+String colorDefault = (String){ .chars = "(1.0, 1.0, 1.0, 1.0)", .length = 21 };
+
+// checks if some property has its default value
+bool PropertyHasDefaultValue(KeyValue property)
+{
+	String key = property.key;
+	String value = property.value;
+	
+	// textures and floats have no default value and i dont know what the default emissiveColor is
+	// TODO: find the default emissive colour
+	if (PropertyIsTexture(property) == true || PropertyIsFloat(property) == true || StringsEqual(key, emissiveColor) == true)
+	{
+		return false;
+	}
+	// the default of all properties is the same (0.0, 0.0)
+	if (PropertyIsOffset(property) == true)
+	{
+		if (StringsEqual(value, offsetDefault) == true)
+		{
+			return true;
+		}
+		
+		return false;
+	}
+	if (StringsEqual(key, renderType) == true)
+	{
+		if (StringsEqual(value, renderTypeDefault) == true)
+		{
+			return true;
+		}
+		
+		return false;
+	}
+	if (StringsEqual(key, materialNumber) == true)
+	{
+		if (StringsEqual(value, materialNumberDefault) == true)
+		{
+			return true;
+		}
+		
+		return false;
+	}
+	if (StringsEqual(key, renderQueue) == true)
+	{
+		if (StringsEqual(value, renderQueueDefault) == true)
+		{
+			return true;
+		}
+		
+		return false;
+	}
+	if (StringsEqual(key, color) == true)
+	{
+		if (StringsEqual(value, colorDefault) == true)
+		{
+			return true;
+		}
+		
+		return false;
+	}
+	
+	printf("unknown property: %s, with value: %s\n", key.chars, value.chars);
+	return false;
+}
+
+void BlankTextureSet(TextureSet * textureSet)
+{
+	textureSet->name = (String){ .chars = NULL, .length = 0 };
+	textureSet->title = (String){ .chars = NULL, .length = 0 };
+	textureSet->recolourable = false;
+	textureSet->shaderType = UNKNOWN;
+	textureSet->meshNames = (StringArray){ .strings = NULL, .length = 0 };
+	textureSet->properties = (KeyValueArray){ .keysValues = NULL, .length = 0 };
+}
+
+// creates a texture set from a material
+void MaterialToTextureSet(ModelMaterial material, PartInformation part, TextureSet * textureSet)
+{
+	BlankTextureSet(textureSet);
+	
+	textureSet->shaderName = material.shaderName;
+	
+	// find the names of the meshes that use the material
+	for (int meshIndex = 0; meshIndex < material.meshIds.length; meshIndex ++)
+	{
+		int meshId = material.meshIds.ints[meshIndex];
+		ModelMesh * mesh = GetMeshWithId(part, meshId);
+		
+		if (mesh == NULL)
+		{
+			continue;
+		}
+		
+		textureSet->meshNames.length += 1;
+		textureSet->meshNames.strings = realloc(textureSet->meshNames.strings, sizeof(String) * textureSet->meshNames.length);
+		textureSet->meshNames.strings[textureSet->meshNames.length - 1] = mesh->name;
+	}
+	
+	// look through the properties, parse them and add them to the apropriate array
+	for (int index = 0; index < material.properties.length; index ++)
+	{
+		KeyValue property = material.properties.keysValues[index];
+//		printf("key: %s, value: %s\n", property.key.chars, property.value.chars);
+		
+		// ignore default properties
+		if (PropertyHasDefaultValue(property) == true)
+		{
+			continue;
+		}
+		else if (PropertyIsIrrelevant(property) == true)
+		{
+			printf("property: %s, has non default value: %s, but is probably irrelevant, skipping.\n", property.key.chars, property.value.chars);
+			continue;
+		}
+		else if (PropertyIsKnown(property) == true)
+		{
+			textureSet->properties.length += 1;
+			textureSet->properties.keysValues = realloc(textureSet->properties.keysValues, sizeof(KeyValue) * textureSet->properties.length);
+			textureSet->properties.keysValues[textureSet->properties.length - 1] = property;
+			continue;
+		}
+		else
+		{
+			printf("WARNING: property: %s, with value: %s, is unrecognised.\n", property.key.chars, property.value.chars);
+			textureSet->properties.length += 1;
+			textureSet->properties.keysValues = realloc(textureSet->properties.keysValues, sizeof(KeyValue) * textureSet->properties.length);
+			textureSet->properties.keysValues[textureSet->properties.length - 1] = property;
+		}
+	}
+}
+
+// create a texture switch and give it a default and recolour texture set for each relevant material
+void CreateTextureSets(MaterialArray materials, PartInformation part, TextureSwitchArray * textureSwitches)
+{
+	// an array of materials that have already been processed, used to detect duplicte materials
+	MaterialArray processedMaterials = (MaterialArray){ .materials = NULL, .length = 0 };
+	
+	// for each material the part has
+	for (int index = 0; index < materials.length; index ++)
+	{
+		ModelMaterial material = materials.materials[index];
+		// check if the material is relevant to recolouring
+		ShaderType shaderType = GetShaderType(material);
+		
+		if (shaderType == IRRELEVANT)
+		{
+			continue;
+		}
+		
+		if (IndexOfMaterial(processedMaterials, material) != -1)
+		{
+			// duplicate material detected, skip
+			continue;
+		}
+		
+		// this material is relevant, create a new texture switch, with a default and recolour texture set
+		TextureSwitch * textureSwitch = malloc(sizeof(TextureSwitch));
+		*textureSwitch = (TextureSwitch){ .name = (String){ .chars = "<NAME>", .length = 7 }, .currentTextureSet = NULL, .textureSets = (TextureSetArray){ .textureSets = NULL, .length = 0 }};
+		// TODO: give the texture switches better names
+		textureSwitch->textureSets.textureSets = malloc(sizeof(TextureSet) * 2);
+		textureSwitch->textureSets.length = 2;
+		
+		TextureSet * defaultTextureSet = &textureSwitch->textureSets.textureSets[0];
+		TextureSet * recolourTextureSet = &textureSwitch->textureSets.textureSets[1];
+		
+		MaterialToTextureSet(material, part, defaultTextureSet);
+		MaterialToTextureSet(material, part, recolourTextureSet);
+		
+		defaultTextureSet->recolourable = false;
+		recolourTextureSet->recolourable = true;
+		
+		// set the texture sets names as the material name plus _default / _recolour
+		ConcatenateStrings(material.materialName, (String){ .chars = "_default", .length = 9 }, &defaultTextureSet->name);
+		ConcatenateStrings(material.materialName, (String){ .chars = "_recolour", .length = 10 }, &recolourTextureSet->name);
+		
+		// set the in game titles
+		recolourTextureSet->title = (String){ .chars = "Bob Ross Paints", .length = 16 };
+		defaultTextureSet->title = (String){ .chars = "Default", .length = 8 };
+		
+		// the default texture set keeps its original shader
+		defaultTextureSet->shaderType = shaderType;
+		// the recolour gets a different shader depending on the type of the original shader
+		recolourTextureSet->shaderType = SelectRecolourShaderType(shaderType);
+		RecolourShaderTypeName(recolourTextureSet->shaderType, &recolourTextureSet->shaderName);
+		
+		// set the texture switch to select the default texture set by default
+		textureSwitch->currentTextureSet = defaultTextureSet;
+		
+		// add the material that just had texture sets made to the list of processed materials
+		processedMaterials.length += 1;
+		processedMaterials.materials = realloc(processedMaterials.materials, sizeof(ModelMaterial) * processedMaterials.length);
+		processedMaterials.materials[processedMaterials.length - 1] = material;
+		
+		// add the new texture switch to the list of texture switches
+		textureSwitches->length += 1;
+		textureSwitches->textureSwitches = realloc(textureSwitches->textureSwitches, sizeof(TextureSwitch) * textureSwitches->length);
+		textureSwitches->textureSwitches[textureSwitches->length - 1] = *textureSwitch;
+	}
+}
+
+void AddTextureProperty(String * patch, KeyValue property)
+{
+	AddToString(patch, (String){ .chars = "\n		texture = ", .length = 14 });
+	AddToString(patch, property.key);
+	AddToString(patch, (String){ .chars = ",", .length = 2});
+	AddToString(patch, property.value);
+}
+
+void AddFloatProperty(String * patch, KeyValue property)
+{
+	AddToString(patch, (String){ .chars = "\n		PROPERTY\n		{\n			name = ", .length = 27 });
+	AddToString(patch, property.key);
+	AddToString(patch, (String){ .chars = "\n			float = ", .length = 13 });
+	AddToString(patch, property.value);
+	AddToString(patch, (String){ .chars = "\n		}", .length = 5 });
+}
+
+void AddColorProperty(String * patch, KeyValue property)
+{
+	AddToString(patch, (String){ .chars = "\n		PROPERTY\n		{\n			name = ", .length = 27 });
+	AddToString(patch, property.key);
+	AddToString(patch, (String){ .chars = "\n			color = ", .length = 13 });
+	
+	// get rid of the ( ) around the value
+	// (1.0, 1.0, 1.0, 1.0) 20
+	// 1.0, 1.0, 1.0, 1.0	18
+	String cleanedValue = (String){ .chars = malloc(sizeof(char) * 18), .length = 18 };
+	memcpy(cleanedValue.chars, &property.value.chars[1], sizeof(char) * cleanedValue.length);
+	
+	AddToString(patch, cleanedValue);
+	AddToString(patch, (String){ .chars = "\n		}", .length = 5 });
+	
+	free(cleanedValue.chars);
+}
+
+// add the properties of a material to the default patch
+void AddDefaultProperties(TextureSet textureSet, String * patch)
+{
+	// depending on the property type add them correctly
+	for (int index = 0; index < textureSet.properties.length; index ++)
+	{
+		KeyValue property = textureSet.properties.keysValues[index];
+		
+		if (PropertyHasDefaultValue(property) == true)
+		{
+			// skip adding properties that have their default values
+			continue;
+		}
+		else if (PropertyIsIrrelevant(property) == true)
+		{
+			printf("property: %s, has non default value: %s, but is probably irrelevant, skipping.\n", property.key.chars, property.value.chars);
+			continue;
+		}
+		else if (PropertyIsTexture(property) == true)
+		{
+			AddTextureProperty(patch, property);
+			continue;
+		}
+		else if (PropertyIsFloat(property) == true)
+		{
+			AddFloatProperty(patch, property);
+			continue;
+		}
+		else if (PropertyIsColor(property) == true)
+		{
+			AddColorProperty(patch, property);
+			continue;
+		}
+		else if (PropertyIsVector(property) == true)
+		{
+			// TODO: properly implement this
+			printf("property type: %s is a vector, i'm not programmed to deal with that yet, skipping\n", property.key.chars);
+			continue;
+		}
+		else if (PropertyIsOffset(property) == true)
+		{
+			// TODO: properly implement this
+			printf("property type: %s is an offset, i'm not programmed to deal with that yet, skipping\n", property.key.chars);
+			continue;
+		}
+		
+		printf("WARNING: property type: %s is unknown, skipping\n", property.key.chars);
+	}
 }
 
 // adds properties to the recolour patch depending on what the properties of the material are
-void AddRecolourProperties(ModelMaterial material, String * patch)
+void AddRecolourProperties(TextureSet textureSet, String * patch)
 {
-	// the recolour shader is TU/Specular
-	// this has the important textures:
-	// _MainTex
-	// _BumpMap
-	// _SpecGlossMap
-	// _MaskTex
-	// _Emission
-	// and not important textures:
-	// _AOMap
-	// _Thickness
-	// _SpecGlossNormMask
-	// _SpecGlossInputMask
-	
+	// we only care about texture properties
 	// _MainTex and _BumpMap should stay the same as the original material
 	// if the shader is Specular or Specular (Mapped) then _SpecGlossMap should use the _MainTex (for specular) / _SpecMap (for specular mapped)
 	// _Emission not sure about this one, may or may not need a custom texture is the shader is emissive, for now use _Emissive
@@ -2958,387 +3381,238 @@ void AddRecolourProperties(ModelMaterial material, String * patch)
 	// _DiffuseNorm
 	// _SpecularNorm
 	// _SmoothnessNorm
+	// TODO: automatically calculate vectors
 	
 	// all properties that are not textures can probably be ignored
-	String mainTex = (String){ .chars = "_MainTex", .length = 9 };
-	String bumpMap = (String){ .chars = "_BumpMap", .length = 9 };
-	String emissive = (String){ .chars = "_Emissive", .length = 10 };
-	String metalMap = (String){ .chars = "_MetalMap", .length = 10 };
-	String specMap = (String){ .chars = "_SpecMap", .length = 9 };
-	StringArray textureTypes = (StringArray){ .strings = malloc(sizeof(String) * 5), .length = 5 };
-	textureTypes.strings[0] = mainTex;
-	textureTypes.strings[1] = bumpMap;
-	textureTypes.strings[2] = emissive;
-	textureTypes.strings[3] = metalMap;
-	textureTypes.strings[4] = specMap;
-	
-	ShaderType shaderType = GetShaderType(material);
-	
-	for (int index = 0; index < material.properties.length; index ++)
+	for (int index = 0; index < textureSet.properties.length; index ++)
 	{
-		String property = material.properties.keysValues[index].key;
-		String value = material.properties.keysValues[index].value;
+		KeyValue property = textureSet.properties.keysValues[index];
 		
-		if (StringsEqual(property, mainTex) == true)
+		if (StringsEqual(property.key, mainTex) == true)
 		{
 			// main tex
-			AddToString(patch, (String){ .chars = "\n		texture = ", .length = 14 });
-			AddToString(patch, property);
-			AddToString(patch, (String){ .chars = ",", .length = 2});
-			AddToString(patch, value);
-			
-			// if the shader is specular (but not specular mapped) main tex should also be used for _SpecGlossMap
-			if (shaderType == SPECULAR || shaderType == BUMPED_SPECULAR || shaderType == BUMPED_SPECULAR_TRANSPARENT || shaderType == EMISSIVE_BUMPED_SPECULAR || shaderType == EMISSIVE_SPECULAR)
-			{
-				AddToString(patch, (String){ .chars = "\n		texture = _SpecGlossMap,", .length = 28 });
-				AddToString(patch, value);
-			}
+			AddTextureProperty(patch, property);
 			continue;
 		}
-		
-		if (StringsEqual(property, bumpMap) == true)
+		else if (StringsEqual(property.key, bumpMap) == true)
 		{
 			// bump map
-			AddToString(patch, (String){ .chars = "\n		texture = ", .length = 14 });
-			AddToString(patch, property);
-			AddToString(patch, (String){ .chars = ",", .length = 2});
-			AddToString(patch, value);
+			AddTextureProperty(patch, property);
 			continue;
 		}
-		
-		if (StringsEqual(property, emissive) == true)
+		else if (StringsEqual(property.key, emissive) == true)
 		{
 			// emissive
-			AddToString(patch, (String){ .chars = "\n		texture = _Emission,", .length = 24 });
-			AddToString(patch, value);
+			AddTextureProperty(patch, (KeyValue){ .key = (String){ .chars = "_Emission", .length = 10 }, .value = property.value});
 			continue;
 		}
-		
-		if (StringsEqual(property, metalMap) == true)
+		else if (StringsEqual(property.key, metalMap) == true)
 		{
-			// this should only show up in resurfaced shaders, TODO: deal with this properly
-			printf("found a _MetalMap, i'm not programmed to deal with that yet, soz.\n");
+			AddTextureProperty(patch, (KeyValue){ .key = metalMap, .value = property.value });
 			continue;
 		}
-		
-		if (StringsEqual(property, specMap) == true)
+		else if (StringsEqual(property.key, specMap) == true)
 		{
 			// specular map
-			AddToString(patch, (String){ .chars = "\n		texture = _SpecGlossMap,", .length = 28 });
-			AddToString(patch, value);
+			AddTextureProperty(patch, (KeyValue){ .key = (String){ .chars = "_SpecGlossMap", .length = 13 }, .value = property.value });
 			continue;
 		}
 		
-		printf("property: %s not listed as relevant to recolouring, skipping\n", property.chars);
+		printf("property: %s not listed as relevant to recolouring, skipping\n", property.key.chars);
+	}
+	
+	// tu legacy / specular shaders need a specular map, and tu metallic needs a metal map, if there is no seperate texture for these the _maintex can be used
+	// tu diffuse indicates that the original material has no spec / metal map and it is not built into mainTex, so a new one must be make
+	if (IndexOfKey(textureSet.properties, 0, specMap) == -1)
+	{
+		// if no spec map is found
+		if (textureSet.shaderType != TU_DIFFUSE)
+		{
+			// and the material has spec / metal built into mainTex
+			String mainTexValue = (String){ .chars = NULL, .length = 0 };
+			ValueOfKey(textureSet.properties, mainTex, &mainTexValue);
+			if (textureSet.shaderType == TU_SPECULAR || textureSet.shaderType == TU_TRANSPARENT_SPECULAR || textureSet.shaderType == TU_LEGACY || textureSet.shaderType == TU_TRANSPARENT_LEGACY)
+			{
+				AddTextureProperty(patch, (KeyValue){ .key = (String){ .chars = "_SpecGlossMap", .length = 14 }, .value = mainTexValue });
+			}
+			else if (textureSet.shaderType == TU_METALLIC || textureSet.shaderType == TU_TRANSPARENT_METALLIC)
+			{
+				AddTextureProperty(patch, (KeyValue){ .key = (String){ .chars = "_MetallicGlossMap", .length = 18 }, .value = mainTexValue });
+			}
+			free(mainTexValue.chars);
+		}
+		else
+		{
+			// TODO: a spec map is needed but not available, one needs to be created
+			AddTextureProperty(patch, (KeyValue){ .key = (String){ .chars = "_SpecGlossMap", .length = 14 }, .value = (String){ .chars = "<SPEC_MAP>", .length = 11 } });
+		}
 	}
 	
 	// add the _MaskTex
 	AddToString(patch, (String){ .chars = "\n		texture = _MaskTex,<RECOLOURING_MASK>\n", .length = 42 });
 	// add the vectors
 	AddToString(patch, (String){ .chars = "\n		vector = _DiffuseNorm,x,y,z\n		vector = _SmoothnessNorm,x,y,z\n		vector = _SpecularNorm,x,y,z", .length = 95 });
+}
+
+void AddTextureSet(String * patch, TextureSet textureSet, String template, String modName)
+{
+	// copy the template default texture set
+	AddToString(patch, (String){ .chars = "+KSP_TEXTURE_SET[", .length = 18 });
+	AddToString(patch, template);
+	// set mod requirements
+	AddToString(patch, (String){ .chars = "]:NEEDS[TexturesUnlimited&", .length = 27 });
+	AddToString(patch, modName);
+	AddToString(patch, (String){ .chars = "]\n{\n	@name = ", .length = 14 });
+	AddToString(patch, textureSet.name);
+	AddToString(patch, (String){ .chars = "\n	@title = ", .length = 12 });
+	AddToString(patch, textureSet.title);
+	AddToString(patch, (String){ .chars = "\n	@MATERIAL\n	{\n		@shader = ", .length = 28 });
+	AddToString(patch, textureSet.shaderName);
+	AddToString(patch, (String){ .chars = "\n", .length = 2 });
 	
-	free(textureTypes.strings);
+	// add the meshes
+	for (int meshIndex = 0; meshIndex < textureSet.meshNames.length; meshIndex ++)
+	{
+		String meshName = textureSet.meshNames.strings[meshIndex];
+	
+		AddToString(patch, (String){ .chars = "\n		mesh = ", .length = 11 });
+		AddToString(patch, meshName);
+	}
+	
+	AddToString(patch, (String){ .chars = "\n", .length = 2 });
+}
+
+void AddAddTextureSetToSwitcher(String * patch, int switcherIndex, String textureSetName)
+{
+	AddToString(patch, (String){ .chars = "\n	@MODULE[KSPTextureSwitch],", .length = 29 });
+	// add the index that indicates which texture switcher to edit
+	String indexString = (String){ .chars = NULL, .length = 0 };
+	IntToString(switcherIndex, &indexString);
+	AddToString(patch, indexString);
+	free(indexString.chars);
+	
+	AddToString(patch, (String){ .chars = "\n	{\n		textureSet = ", .length = 20 });
+	AddToString(patch, textureSetName);
+	AddToString(patch, (String){ .chars = "\n	}", .length = 4 });
+}
+
+void AddTextureSwitch(String * patch, TextureSwitch textureSwitch)
+{
+	AddToString(patch, (String){ .chars = "	MODULE\n	{\n		name = KSPTextureSwitch\n		sectionName = ", .length = 54 });
+	AddToString(patch, textureSwitch.name);
+	AddToString(patch, (String){ .chars = "\n		currentTextureSet = ", .length = 24 });
+	AddToString(patch, textureSwitch.currentTextureSet->name);
+	AddToString(patch, (String){ .chars = "\n		textureSet = ", .length = 17 });
+	AddToString(patch, textureSwitch.currentTextureSet->name);
+	AddToString(patch, (String){ .chars = "\n	}\n", .length = 5 });
+}
+
+void AddEditPart(String * patch, String partName, String order, String modName)
+{
+	// edit the part
+	AddToString(patch, (String){ .chars = "@PART[", .length = 7 });
+	AddToString(patch, partName);
+	// set the orderings
+	AddToString(patch, (String){ .chars = "]:FOR[", .length = 7 });
+	AddToString(patch, order);
+	// set the mod requirements
+	AddToString(patch, (String){ .chars = "]:NEEDS[TexturesUnlimited&", .length = 27 });
+	AddToString(patch, modName);
+	AddToString(patch, (String){ .chars = "]\n{\n", .length = 5 });
 }
 
 // creates a patch that will replace the parts materials with texture sets controlled by texture switchers
-void CreateDefaultPatch(PartInformation part, TextureSwitchArray textureSwitches, String * defaultPatch)
+void CreateDefaultPatch(PartInformation part, TextureSwitchArray textureSwitches, String * patch)
 {
-// eg:
-//	@PART[andromeda_avionics_s1_1]:FOR[000_TU_Tantares_Default_001]:NEEDS[TexturesUnlimited&Tantares]
-//	{
-//		MODULE
-//		{
-//			name = KSPTextureSwitch
-//			switcherId = Appearance
-//			sectionName = Appearance
-//			currentTextureSet = Tantares_Default_Andromeda_Avionics
-//			textureSet = Tantares_Default_Andromeda_Avionics
-//		}
-//	}
-//	+KSP_TEXTURE_SET[Tantares_Default]:NEEDS[TexturesUnlimited&Tantares]
-//	{
-//		@name = Tantares_Default_Andromeda_Avionics
-//		@MATERIAL
-//		{		
-//			@shader = KSP/Bumped Specular
-//		
-//			mesh = mesh1
-//		
-//			texture = _MainTex,Tantares/parts/core_vostok/a1
-//			texture = _BumpMap,Tantares/parts/core_vostok/n1
-//			
-//			PROPERTY
-//			{
-//				name = _Shininess
-//				float = 0.4
-//			}
-//		}
-//	}
-	
-	AddToString(defaultPatch, (String){ .chars = "@PART[", .length = 7 });
-	AddToString(defaultPatch, *part.modules.name);
-	AddToString(defaultPatch, (String){ .chars = "]:FOR[", .length = 7 });
-	// TODO: make a way to set the ordering
-	AddToString(defaultPatch, (String){ .chars = "000_TU_Default_000", .length = 19 });
-	AddToString(defaultPatch, (String){ .chars = "]:NEEDS[TexturesUnlimited&", .length = 27 });
 	// TODO: make a way to set mod requirements
-	AddToString(defaultPatch, (String){ .chars = "<MODNAME>", .length = 10 });
-	AddToString(defaultPatch, (String){ .chars = "]\n{\n", .length = 5 });
+	// TODO: make a way to set the ordering
+	String order = (String){ .chars = "000_TU_Default_000", .length = 19 };
+	String modName = (String){ .chars = "<MODNAME>", .length = 9 };
+	
+	AddEditPart(patch, *part.modules.name, order, modName);
 	
 	// add each texture switch
 	for (int index = 0; index < textureSwitches.length; index ++)
 	{
 		TextureSwitch textureSwitch = textureSwitches.textureSwitches[index];
-		
-		AddToString(defaultPatch, (String){ .chars = "	MODULE\n	{\n		name = KSPTextureSwitch\n		sectionName = ", .length = 54 });
-		AddToString(defaultPatch, textureSwitch.name);
-		AddToString(defaultPatch, (String){ .chars = "\n		currentTextureSet = ", .length = 24 });
-		AddToString(defaultPatch, textureSwitch.currentTextureSet->name);
-		AddToString(defaultPatch, (String){ .chars = "\n		textureSet = ", .length = 17 });
-		AddToString(defaultPatch, textureSwitch.currentTextureSet->name);
-		AddToString(defaultPatch, (String){ .chars = "\n	}\n", .length = 5 });
+		AddTextureSwitch(patch, textureSwitch);
 	}
 	
-	AddToString(defaultPatch, (String){ .chars = "}\n", .length = 3 });
+	AddToString(patch, (String){ .chars = "}\n", .length = 3 });
 	
 	// add the default texture sets of each texture switch
 	for (int textureSwitchIndex = 0; textureSwitchIndex < textureSwitches.length; textureSwitchIndex ++)
 	{
 		TextureSwitch textureSwitch = textureSwitches.textureSwitches[textureSwitchIndex];
-		TextureSet textureSet = textureSwitch.textureSets.textureSets[0];
-		ModelMaterial material = *textureSet.material;
-		
-		AddToString(defaultPatch, (String){ .chars = "+KSP_TEXTURE_SET[", .length = 18 });
+		TextureSet textureSet = *textureSwitch.currentTextureSet;
 		// TODO: make a way to set the default texture set to copy
-		AddToString(defaultPatch, (String){ .chars = "<DEFAULT_TEXTURE_SET>", .length = 22 });
-		AddToString(defaultPatch, (String){ .chars = "]:NEEDS[TexturesUnlimited&", .length = 27 });
-		// TODO: make a way to set mod requirements
-		AddToString(defaultPatch, (String){ .chars = "<MODNAME>", .length = 10 });
-		AddToString(defaultPatch, (String){ .chars = "]\n{\n	@name = ", .length = 14 });
-		AddToString(defaultPatch, textureSet.name);
-		AddToString(defaultPatch, (String){ .chars = "\n	@MATERIAL\n	{\n		@shader = ", .length = 28 });
-		AddToString(defaultPatch, material.shaderName);
-		AddToString(defaultPatch, (String){ .chars = "\n", .length = 2 });
+		String template = (String){ .chars = "<DEFAULT_TEXTURE_SET>", .length = 22 };
 		
-		// add the meshes of the material
-		for (int meshIndex = 0; meshIndex < material.meshIds.length; meshIndex ++)
-		{
-			int meshId = material.meshIds.ints[meshIndex];
-			ModelMesh * mesh = GetMeshWithId(part, meshId);
-			
-			if (mesh == NULL)
-			{
-				continue;
-			}
-			
-			AddToString(defaultPatch, (String){ .chars = "\n		mesh = ", .length = 11 });
-			AddToString(defaultPatch, mesh->name);
-		}
+		AddTextureSet(patch, textureSet, template, modName);
 		
-		AddToString(defaultPatch, (String){ .chars = "\n", .length = 2 });
+		// add the propeties of the textureSet to the patch
+		AddDefaultProperties(textureSet, patch);
 		
-		// add the propeties of the material to the patch
-		AddDefaultProperties(material, defaultPatch);
-		
-		AddToString(defaultPatch, (String){ .chars = "\n	}\n}\n", .length = 7 });
+		AddToString(patch, (String){ .chars = "\n	}\n}\n", .length = 7 });
 	}
-	
-	//BetterPrint(defaultPatch);
 }
 
 // creates a patch to add recolour texture sets to the texture switches of a part
-void CreateRecolourPatch(PartInformation part, TextureSwitchArray textureSwitches, String * recolourPatch)
+void CreateRecolourPatch(PartInformation part, TextureSwitchArray textureSwitches, String * patch)
 {
-	// eg:
-//	@PART[andromeda_avionics_s1_1]:FOR[999_TU_Tantares_Recolour_001]:NEEDS[TexturesUnlimited&Tantares]
-//	{
-//		@MODULE[KSPTextureSwitch],0
-//		{
-//			textureSet = Tantares_Paint_Andromeda_Avionics
-//		}
-//		%MODULE[SSTURecolorGUI]
-//		{
-//			%name = SSTURecolorGUI
-//		}
-//	}
-//	+KSP_TEXTURE_SET[Tantares_Paint]:NEEDS[TexturesUnlimited&Tantares]
-//	{
-//		@name = Tantares_Paint_Andromeda_Avionics
-//		@MATERIAL
-//		{
-//			mesh = mesh1
-//		
-//			texture = _MainTex,Tantares/parts/core_vostok/a1
-//			texture = _BumpMap,Tantares/parts/core_vostok/n1
-//			texture = _MetallicGlossMap,TU_Tantares/Parts/Andromeda/a1_spec
-//			texture = _MaskTex,TU_Tantares/Parts/Andromeda/a1_paint
-//			
-//			vector = _DiffuseNorm,0.33,0.33,0.33
-//			vector = _MetalNorm,0.69,0.69,0.69
-//			vector = _SmoothnessNorm,0.71,0.71,0.71
-//		}
-//	}
-
-	AddToString(recolourPatch, (String){ .chars = "@PART[", .length = 7 });
-	AddToString(recolourPatch, *part.modules.name);
-	AddToString(recolourPatch, (String){ .chars = "]:FOR[", .length = 7 });
-	// TODO: make a way to set the ordering
-	AddToString(recolourPatch, (String){ .chars = "999_TU_Recolour_000", .length = 20 });
-	AddToString(recolourPatch, (String){ .chars = "]:NEEDS[TexturesUnlimited&", .length = 27 });
 	// TODO: make a way to set mod requirements
-	AddToString(recolourPatch, (String){ .chars = "<MODNAME>", .length = 10 });
-	AddToString(recolourPatch, (String){ .chars = "]\n{", .length = 4 });
+	// TODO: make a way to set the ordering
+	String order = (String){ .chars = "999_TU_Recolour_000", .length = 20 };
+	String modName = (String){ .chars = "<MODNAME>", .length = 10 };
 	
+	AddEditPart(patch, *part.modules.name, order, modName);
+	
+	// add the recolour texture set to the texture switchers
 	for (int index = 0; index < textureSwitches.length; index ++)
 	{
 		TextureSwitch textureSwitch = textureSwitches.textureSwitches[index];
-	
-		AddToString(recolourPatch, (String){ .chars = "\n	@MODULE[KSPTextureSwitch],", .length = 29 });
-		// add the index that indicates which texture switcher to edit
-		String indexString = (String){ .chars = NULL, .length = 0 };
-		IntToString(index, &indexString);
-		AddToString(recolourPatch, indexString);
-		free(indexString.chars);
+		String recolourTextureSetName = textureSwitch.textureSets.textureSets[1].name;
 		
-		AddToString(recolourPatch, (String){ .chars = "\n	{\n		textureSet = ", .length = 20 });
-		AddToString(recolourPatch, textureSwitch.textureSets.textureSets[1].name);
-		AddToString(recolourPatch, (String){ .chars = "\n	}", .length = 4 });
+		AddAddTextureSetToSwitcher(patch, index, recolourTextureSetName);
 	}
 	
 	// add the recolour button
-	AddToString(recolourPatch, (String){ .chars = "\n	%MODULE[SSTURecolorGUI]\n	{\n		%name = SSTURecolorGUI\n	}\n}\n", .length = 60 });
+	AddToString(patch, (String){ .chars = "\n	%MODULE[SSTURecolorGUI]\n	{\n		%name = SSTURecolorGUI\n	}\n}\n", .length = 60 });
 	
 	// add the recolour texture sets of each texture switch
 	for (int textureSwitchIndex = 0; textureSwitchIndex < textureSwitches.length; textureSwitchIndex ++)
 	{
+		// add the second textrue set the switchers have (should be the recolour one)
 		TextureSwitch textureSwitch = textureSwitches.textureSwitches[textureSwitchIndex];
 		TextureSet textureSet = textureSwitch.textureSets.textureSets[1];
-		ModelMaterial material = *textureSet.material;
 		
-		AddToString(recolourPatch, (String){ .chars = "+KSP_TEXTURE_SET[", .length = 18 });
-		// TODO: make a way to set the default texture set to copy
-		AddToString(recolourPatch, (String){ .chars = "<RECOLOUR_TEXTURE_SET>", .length = 23 });
-		AddToString(recolourPatch, (String){ .chars = "]:NEEDS[TexturesUnlimited&", .length = 27 });
-		// TODO: make a way to set mod requirements
-		AddToString(recolourPatch, (String){ .chars = "<MODNAME>", .length = 10 });
-		AddToString(recolourPatch, (String){ .chars = "]\n{\n	@name = ", .length = 14 });
-		AddToString(recolourPatch, textureSet.name);
-		AddToString(recolourPatch, (String){ .chars = "\n	@MATERIAL\n	{", .length = 15 });
+		String template = (String){ .chars = "<RECOLOUR_TEXTURE_SET>", .length = 23 };
 		
-		// add the meshes of the material
-		for (int meshIndex = 0; meshIndex < material.meshIds.length; meshIndex ++)
-		{
-			int meshId = material.meshIds.ints[meshIndex];
-			ModelMesh * mesh = GetMeshWithId(part, meshId);
-			
-			if (mesh == NULL)
-			{
-				continue;
-			}
-			
-			AddToString(recolourPatch, (String){ .chars = "\n		mesh = ", .length = 11 });
-			AddToString(recolourPatch, mesh->name);
-		}
-		
-		AddToString(recolourPatch, (String){ .chars = "\n", .length = 2 });
+		AddTextureSet(patch, textureSet, template, modName);
 		
 		// add the propeties of the material to the patch
-		AddRecolourProperties(material, recolourPatch);
+		AddRecolourProperties(textureSet, patch);
 		
 		// end the texture set
-		AddToString(recolourPatch, (String){ .chars = "\n	}\n}\n", .length = 7 });
+		AddToString(patch, (String){ .chars = "\n	}\n}\n", .length = 7 });
 	}
 }
 
-// gets a list of the relevant materials a part uses, relevance is indicated by material shader type
-void FindRelevantMaterials(PartInformation part, MaterialArray * relevantMaterials)
+void GetPartMaterials(PartInformation * part, MaterialArray * output)
 {
-	ModelArray models = part.models;
-	
-	for (int modelIndex = 0; modelIndex < models.length; modelIndex ++)
+	for (int modelIndex = 0; modelIndex < part->models.length; modelIndex ++)
 	{
-		MuModel model = models.models[modelIndex];
+		MuModel model = part->models.models[modelIndex];
 		
 		for (int materialIndex = 0; materialIndex < model.materials.length; materialIndex ++)
 		{
-			// if the shader type indicates that this material is relevant add it to the list of relevant materials
 			ModelMaterial material = model.materials.materials[materialIndex];
-			ShaderType shaderType = GetShaderType(material);
-			//printf("shader type: %d\n", shaderType);
 			
-			if (shaderType == UNKNOWN || shaderType == IRRELEVANT)
-			{
-				continue;
-			}
-			
-			// check if its material is the same as any of the previous materials
-			if (IndexOfMaterial(*relevantMaterials, material) != -1)
-			{
-				// if this material is the same as a previous relevant material
-				printf("detected duplicate material: ");
-				BetterPrint(material.materialName);
-				continue;
-			}
-			
-			// add the material to the list of relevant materials
-			relevantMaterials->length += 1;
-			relevantMaterials->materials = realloc(relevantMaterials->materials, sizeof(ModelMaterial) * relevantMaterials->length);
-			relevantMaterials->materials[relevantMaterials->length - 1] = material;
+			output->length += 1;
+			output->materials = realloc(output->materials, sizeof(ModelMaterial) * output->length);
+			output->materials[output->length - 1] = material;
 		}
 	}
-	
-	printf("relevant materials: \n");
-	for (int index = 0; index < relevantMaterials->length; index ++)
-	{
-		ModelMaterial material = relevantMaterials->materials[index];
-		BetterPrint(material.materialName);
-	}
-}
-
-// create a texture switch and give it a default and recolour texture set for each relevant material
-void CreateTextureSets(MaterialArray relevantMaterials, TextureSwitchArray * textureSwitches)
-{
-	for (int index = 0; index < relevantMaterials.length; index ++)
-	{
-		// the material to be remade in a texture set
-		ModelMaterial * material = &relevantMaterials.materials[index];
-		// the texture switch that will switch between the default and recolour texture sets
-		TextureSwitch * textureSwitch = &textureSwitches->textureSwitches[index];
-		*textureSwitch = (TextureSwitch){ .name = (String){ .chars = "<NAME>", .length = 7 }, .currentTextureSet = NULL, .textureSets = (TextureSetArray){ .textureSets = NULL, .length = 0 }};
-		// TODO: give the texture switches better names
-		
-		// the texture sets that the texture switch has access to, should be empty
-		TextureSetArray * textureSets = &textureSwitch->textureSets;
-		*textureSets = (TextureSetArray){ .length = 2, .textureSets = malloc(sizeof(TextureSet) * 2)};
-		
-		// add the default texture set to recreate the material
-		TextureSet * defaultTextureSet = &textureSets->textureSets[0];
-		*defaultTextureSet = (TextureSet){ .name = (String){ .chars = NULL , .length = 0 }, .material = NULL };
-		// set the defualt texture set's name to be the name of the material + default
-		String defaultString = (String){ .chars = "_default", .length = 9 };
-		ConcatenateStrings(material->materialName, defaultString, &defaultTextureSet->name);
-		// set the material that will be replicated
-		defaultTextureSet->material = material;
-		
-		// add the recolour texture set
-		TextureSet * recolourTextureSet = &textureSets->textureSets[1];
-		*recolourTextureSet = (TextureSet){ .name = (String){ .chars = NULL , .length = 0 }, .material = NULL };
-		// set the recolour texture set's name to be the name of the material + recolour
-		String recolourString = (String){ .chars = "_recolour", .length = 10 };
-		ConcatenateStrings(material->materialName, recolourString, &recolourTextureSet->name);
-		// the recolour texture set needs to know the default material so it knows what textures are available to use
-		recolourTextureSet->material = material;
-		
-		// set the texture switch to select the default texture set by default
-		textureSwitch->currentTextureSet = defaultTextureSet;
-	}
-	
-//	printf("texture sets: \n");
-//	for (int index = 0; index < textureSwitches->length; index ++)
-//	{
-//		TextureSwitch textureSwitch = textureSwitches->textureSwitches[index];
-//		BetterPrint(textureSwitch.textureSets.textureSets[0].name);
-//	}
 }
 
 // the two strings represent what is in the two .cfg files that make a recolour
@@ -3352,29 +3626,28 @@ RecolourConfig;
 // returns a recolour config for a part
 void Recolour(PartInformation * part, RecolourConfig * recolour)
 {
-	// find which materials are relevant by checking their shader type
-	// for each material create a default texture set that recreates that material
-	// and create a texture switcher to switch between these and recolour texture sets
-	
-	// TODO: if the part has a set of variants that can be replicated with the stock variants system recolourable variants can be used
-	// otherwise a texture switcher must be made for each relevant material
+	// for each material create a texture switcher that swaps between a default and recolour texture set
 	// materials may also be duplicated if multiple of the same mesh is used in a model
+	// from the texture switchers and sets create a config file that implements them
+	
+	// TODO: if the part has a set of variants that switch only materials this can be replicated with a texture switch
+	// if the variants switch materials and meshes this can be replicated with the stock variants system using recolourable variants
+	// otherwise (switching other part properties) a texture switcher must be made for each material
 	
 	// TODO: also check if multiple identically named meshes use different materials
 	// if so: uh oh
 	
-	// find relevant materials
-	MaterialArray relevantMaterials = (MaterialArray){ .materials = NULL, .length = 0 };
-	FindRelevantMaterials(*part, &relevantMaterials);
+	// collect the materials of all the models of the part
+	MaterialArray materials = (MaterialArray){ .materials = NULL, .length = 0 };
+	GetPartMaterials(part, &materials);
 	
-	// we now have a list of the materials that need to be remade with texture sets
-	// create a texture switch for each of these materials and give each of them a default texture set that will recreate the material and a recolour texture set
-	TextureSwitchArray textureSwitches = (TextureSwitchArray){ .length = relevantMaterials.length, .textureSwitches = malloc(sizeof(TextureSwitch) * relevantMaterials.length)};
-	CreateTextureSets(relevantMaterials, &textureSwitches);
+	// create a texture switch and give it a default and recolour texture set for each (relevant) material the part uses
+	TextureSwitchArray textureSwitches = (TextureSwitchArray){ .length = 0, .textureSwitches = NULL };
+	CreateTextureSets(materials, *part, &textureSwitches);
 	
 	// clear the old default config, if any
 	recolour->defaultConfig = (String){ .chars = realloc(recolour->defaultConfig.chars, sizeof(char) * 0), .length = 0 };
-	// create a default config patch that implements the texture switches
+	// create a default config patch that implements the texture switches and default texture sets
 	CreateDefaultPatch(*part, textureSwitches, &recolour->defaultConfig);
 	
 	// clear the old recolour config, if any
@@ -3386,7 +3659,6 @@ void Recolour(PartInformation * part, RecolourConfig * recolour)
 	printf("recolour patch:\n%s\n", recolour->recolourConfig.chars);
 	
 	free(textureSwitches.textureSwitches);
-	free(relevantMaterials.materials);
 }
 
 //█▀▄ █▀█ ▄▀█ █░█░█ █ █▄░█ █▀▀
