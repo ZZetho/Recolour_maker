@@ -1,5 +1,5 @@
 build/_deps/
-build/CMakerFiles/
+build/CMakeFiles/
 build/CMakeCache.txt
 build/cmake_install.cmake
 build/CPackConfig.cmake
