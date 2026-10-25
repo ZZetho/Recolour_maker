@@ -1,5 +1,0 @@
-to build for windows (x86 64):
-cmake -S src -B build --fresh -DCMAKE_TOOLCHAIN_FILE=Windows_64.cmake
-
-to build for linux (x86 64):
-cmake -S src -B build --fresh -DCMAKE_TOOLCHAIN_FILE=Linux_64.cmake

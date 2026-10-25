@@ -39,11 +39,14 @@ Then, go into build and use the command:
 `make`
 
 ## Compatiablility:
-Currently only includes build for x86_64 both Windows and Linux.
+Currently only includes builds for x86_64 both Windows and Linux.
 
 ## Known bugs:
-Fails to correctly parse inline Modules, fotunatley these are extremly rare.
+Fails to correctly parse inline Modules, fotunatley these are extremly rare.  
 Sometimes the materials that are ignored are actually important.
+
+## Reporting bugs:
+Please include RecolourMaker.log (in the build folder) and the part you were trying to recolour in your report. 😘️
 
 ## Credits:
 - shadowmage45, for creating [Textures Unlimited](https://github.com/KSPModStewards/TexturesUnlimited).
