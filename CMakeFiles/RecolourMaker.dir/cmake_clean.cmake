@@ -1,6 +1,6 @@
 file(REMOVE_RECURSE
-  "CMakeFiles/RecolourMaker.dir/RecolourMaker.c.o"
-  "CMakeFiles/RecolourMaker.dir/RecolourMaker.c.o.d"
+  "CMakeFiles/RecolourMaker.dir/src/RecolourMaker.c.o"
+  "CMakeFiles/RecolourMaker.dir/src/RecolourMaker.c.o.d"
   "RecolourMaker"
   "RecolourMaker.pdb"
 )

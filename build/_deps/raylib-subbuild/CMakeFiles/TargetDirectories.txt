@@ -1,0 +1,3 @@
+/home/jhon/.wine/drive_c/GOG Games/Kerbal Space Program/GameData/zzz_RecolourConfigCreator/build/_deps/raylib-subbuild/CMakeFiles/raylib-populate.dir
+/home/jhon/.wine/drive_c/GOG Games/Kerbal Space Program/GameData/zzz_RecolourConfigCreator/build/_deps/raylib-subbuild/CMakeFiles/edit_cache.dir
+/home/jhon/.wine/drive_c/GOG Games/Kerbal Space Program/GameData/zzz_RecolourConfigCreator/build/_deps/raylib-subbuild/CMakeFiles/rebuild_cache.dir

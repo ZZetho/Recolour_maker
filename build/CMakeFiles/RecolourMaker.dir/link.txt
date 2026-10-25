@@ -1,0 +1,3 @@
+/usr/bin/cmake -E rm -f CMakeFiles/RecolourMaker.dir/objects.a
+/usr/bin/x86_64-w64-mingw32-ar qc CMakeFiles/RecolourMaker.dir/objects.a @CMakeFiles/RecolourMaker.dir/objects1.rsp
+/usr/bin/x86_64-w64-mingw32-gcc -g -Wl,--whole-archive CMakeFiles/RecolourMaker.dir/objects.a -Wl,--no-whole-archive -o RecolourMaker.exe -Wl,--out-implib,libRecolourMaker.dll.a -Wl,--major-image-version,0,--minor-image-version,0 @CMakeFiles/RecolourMaker.dir/linkLibs.rsp

@@ -1,0 +1,524 @@
+INFO: Initializing raylib 6.5-dev
+INFO: Platform backend: DESKTOP (GLFW)
+INFO: Supported raylib modules:
+INFO:     > rcore:..... loaded (mandatory)
+INFO:     > rlgl:...... loaded (mandatory)
+INFO:     > rshapes:... loaded (optional)
+INFO:     > rtextures:. loaded (optional)
+INFO:     > rtext:..... loaded (optional)
+INFO:     > rmodels:... loaded (optional)
+INFO:     > raudio:.... loaded (optional)
+INFO: DISPLAY: Device initialized successfully 
+INFO:     > Display size: 1920 x 1080
+INFO:     > Screen size:  1440 x 800
+INFO:     > Render size:  1440 x 800
+INFO:     > Viewport offsets: 0, 0
+INFO: GLAD: OpenGL extensions loaded successfully
+INFO: GL: Supported extensions count: 243
+INFO: GL: OpenGL device information:
+INFO:     > Vendor:   AMD
+INFO:     > Renderer: AMD Radeon RX 6600 (radeonsi, navi23, LLVM 20.1.2, DRM 3.64, 7.0.0-38-generic)
+INFO:     > Version:  4.6 (Core Profile) Mesa 25.2.8-0ubuntu0.24.04.4
+INFO:     > GLSL:     4.60
+INFO: GL: VAO extension detected, VAO functions loaded successfully
+INFO: GL: NPOT textures extension detected, full NPOT textures supported
+INFO: GL: DXT compressed textures supported
+INFO: GL: ETC2/EAC compressed textures supported
+INFO: PLATFORM: DESKTOP (GLFW - X11): Initialized successfully
+INFO: TEXTURE: [ID 1] Texture loaded successfully (1x1 | R8G8B8A8 | 1 mipmaps)
+INFO: TEXTURE: [ID 1] Default texture loaded successfully
+INFO: SHADER: [ID 1] Vertex shader compiled successfully
+INFO: SHADER: [ID 2] Fragment shader compiled successfully
+INFO: SHADER: [ID 3] Program shader loaded successfully
+INFO: SHADER: [ID 3] Default shader loaded successfully
+INFO: RLGL: Render batch vertex buffers loaded successfully in RAM (CPU)
+INFO: RLGL: Render batch vertex buffers loaded successfully in VRAM (GPU)
+INFO: RLGL: Default OpenGL state initialized successfully
+INFO: TEXTURE: [ID 2] Texture loaded successfully (128x128 | GRAY_ALPHA | 1 mipmaps)
+INFO: FONT: Default font loaded successfully (224 glyphs)
+INFO: SYSTEM: Working Directory: /home/jhon/.wine/drive_c/GOG Games/Kerbal Space Program/GameData/zzz_RecolourConfigCreator/build
+INFO: SHADER: [ID 4] Fragment shader compiled successfully
+INFO: SHADER: [ID 5] Program shader loaded successfully
+INFO: FILEIO: [Roboto-Regular.ttf] File loaded successfully
+WARNING: FONT: Requested codepoints glyphs found: [324/400]
+INFO: TEXTURE: [ID 3] Texture loaded successfully (1024x1024 | GRAY_ALPHA | 1 mipmaps)
+INFO: FONT: Data loaded successfully (48 pixel size | 324 glyphs)
+INFO: TEXTURE: [ID 4] Texture loaded successfully (10x10 | R8G8B8A8 | 1 mipmaps)
+INFO: FILEIO: [Textures/paint_old-0.png] File loaded successfully
+INFO: IMAGE: Data loaded successfully (32x32 | R8G8B8A8 | 1 mipmaps)
+INFO: TEXTURE: [ID 5] Texture loaded successfully (32x32 | R8G8B8A8 | 1 mipmaps)
+sprite loaded: paint_old-0.png<\0>
+INFO: FILEIO: [Textures/Copy.png] File loaded successfully
+INFO: IMAGE: Data loaded successfully (32x32 | R8G8B8A8 | 1 mipmaps)
+INFO: TEXTURE: [ID 6] Texture loaded successfully (32x32 | R8G8B8A8 | 1 mipmaps)
+sprite loaded: Copy.png<\0>
+INFO: FILEIO: [Textures/FileText.png] File loaded successfully
+INFO: IMAGE: Data loaded successfully (16x16 | GRAY_ALPHA | 1 mipmaps)
+INFO: TEXTURE: [ID 7] Texture loaded successfully (16x16 | GRAY_ALPHA | 1 mipmaps)
+sprite loaded: FileText.png<\0>
+INFO: FILEIO: [Textures/FileBrowserClose.png] File loaded successfully
+INFO: IMAGE: Data loaded successfully (32x32 | R8G8B8A8 | 1 mipmaps)
+INFO: TEXTURE: [ID 8] Texture loaded successfully (32x32 | R8G8B8A8 | 1 mipmaps)
+sprite loaded: FileBrowserClose.png<\0>
+INFO: FILEIO: [Textures/ModelsListRelevantOff.png] File loaded successfully
+INFO: IMAGE: Data loaded successfully (32x22 | R8G8B8A8 | 1 mipmaps)
+INFO: TEXTURE: [ID 9] Texture loaded successfully (32x22 | R8G8B8A8 | 1 mipmaps)
+sprite loaded: ModelsListRelevantOff.png<\0>
+INFO: FILEIO: [Textures/EmbossedBottom.png] File loaded successfully
+INFO: IMAGE: Data loaded successfully (1x2 | R8G8B8A8 | 1 mipmaps)
+INFO: TEXTURE: [ID 10] Texture loaded successfully (1x2 | R8G8B8A8 | 1 mipmaps)
+sprite loaded: EmbossedBottom.png<\0>
+INFO: FILEIO: [Textures/EmbossedBottomLeftInverse.png] File loaded successfully
+INFO: IMAGE: Data loaded successfully (2x2 | R8G8B8A8 | 1 mipmaps)
+INFO: TEXTURE: [ID 11] Texture loaded successfully (2x2 | R8G8B8A8 | 1 mipmaps)
+sprite loaded: EmbossedBottomLeftInverse.png<\0>
+INFO: FILEIO: [Textures/file_blue_grad_paint-0.png] File loaded successfully
+INFO: IMAGE: Data loaded successfully (32x32 | R8G8B8A8 | 1 mipmaps)
+INFO: TEXTURE: [ID 12] Texture loaded successfully (32x32 | R8G8B8A8 | 1 mipmaps)
+sprite loaded: file_blue_grad_paint-0.png<\0>
+INFO: FILEIO: [Textures/FileTexture.png] File loaded successfully
+INFO: IMAGE: Data loaded successfully (16x16 | R8G8B8A8 | 1 mipmaps)
+INFO: TEXTURE: [ID 13] Texture loaded successfully (16x16 | R8G8B8A8 | 1 mipmaps)
+sprite loaded: FileTexture.png<\0>
+INFO: FILEIO: [Textures/ModelsListClose.png] File loaded successfully
+INFO: IMAGE: Data loaded successfully (32x22 | R8G8B8A8 | 1 mipmaps)
+INFO: TEXTURE: [ID 14] Texture loaded successfully (32x22 | R8G8B8A8 | 1 mipmaps)
+sprite loaded: ModelsListClose.png<\0>
+INFO: FILEIO: [Textures/ModuleTreeRelevantOff.png] File loaded successfully
+INFO: IMAGE: Data loaded successfully (32x32 | R8G8B8A8 | 1 mipmaps)
+INFO: TEXTURE: [ID 15] Texture loaded successfully (32x32 | R8G8B8A8 | 1 mipmaps)
+sprite loaded: ModuleTreeRelevantOff.png<\0>
+INFO: FILEIO: [Textures/EmbossedTopRight.png] File loaded successfully
+INFO: IMAGE: Data loaded successfully (2x2 | R8G8B8A8 | 1 mipmaps)
+INFO: TEXTURE: [ID 16] Texture loaded successfully (2x2 | R8G8B8A8 | 1 mipmaps)
+sprite loaded: EmbossedTopRight.png<\0>
+INFO: FILEIO: [Textures/FileExit.png] File loaded successfully
+INFO: IMAGE: Data loaded successfully (16x16 | R8G8B8A8 | 1 mipmaps)
+INFO: TEXTURE: [ID 17] Texture loaded successfully (16x16 | R8G8B8A8 | 1 mipmaps)
+sprite loaded: FileExit.png<\0>
+INFO: FILEIO: [Textures/ModuleTreeRelevantOn.png] File loaded successfully
+INFO: IMAGE: Data loaded successfully (32x32 | R8G8B8A8 | 1 mipmaps)
+INFO: TEXTURE: [ID 18] Texture loaded successfully (32x32 | R8G8B8A8 | 1 mipmaps)
+sprite loaded: ModuleTreeRelevantOn.png<\0>
+INFO: FILEIO: [Textures/EmbossedTopLeft.png] File loaded successfully
+INFO: IMAGE: Data loaded successfully (2x2 | R8G8B8A8 | 1 mipmaps)
+INFO: TEXTURE: [ID 19] Texture loaded successfully (2x2 | R8G8B8A8 | 1 mipmaps)
+sprite loaded: EmbossedTopLeft.png<\0>
+INFO: FILEIO: [Textures/EmbossedBottomRight.png] File loaded successfully
+INFO: IMAGE: Data loaded successfully (2x2 | R8G8B8A8 | 1 mipmaps)
+INFO: TEXTURE: [ID 20] Texture loaded successfully (2x2 | R8G8B8A8 | 1 mipmaps)
+sprite loaded: EmbossedBottomRight.png<\0>
+INFO: FILEIO: [Textures/kodak_imaging_file-0.png] File loaded successfully
+INFO: IMAGE: Data loaded successfully (32x32 | R8G8B8A8 | 1 mipmaps)
+INFO: TEXTURE: [ID 21] Texture loaded successfully (32x32 | R8G8B8A8 | 1 mipmaps)
+sprite loaded: kodak_imaging_file-0.png<\0>
+INFO: FILEIO: [Textures/RelevantOn.png] File loaded successfully
+INFO: IMAGE: Data loaded successfully (32x32 | R8G8B8A8 | 1 mipmaps)
+INFO: TEXTURE: [ID 22] Texture loaded successfully (32x32 | R8G8B8A8 | 1 mipmaps)
+sprite loaded: RelevantOn.png<\0>
+INFO: FILEIO: [Textures/ModuleTreeClose.png] File loaded successfully
+INFO: IMAGE: Data loaded successfully (48x48 | R8G8B8A8 | 1 mipmaps)
+INFO: TEXTURE: [ID 23] Texture loaded successfully (48x48 | R8G8B8A8 | 1 mipmaps)
+sprite loaded: ModuleTreeClose.png<\0>
+INFO: FILEIO: [Textures/ModelsListRelevantOn.png] File loaded successfully
+INFO: IMAGE: Data loaded successfully (32x22 | R8G8B8A8 | 1 mipmaps)
+INFO: TEXTURE: [ID 24] Texture loaded successfully (32x22 | R8G8B8A8 | 1 mipmaps)
+sprite loaded: ModelsListRelevantOn.png<\0>
+INFO: FILEIO: [Textures/ole2-1.png] File loaded successfully
+INFO: IMAGE: Data loaded successfully (32x32 | R8G8B8A8 | 1 mipmaps)
+INFO: TEXTURE: [ID 25] Texture loaded successfully (32x32 | R8G8B8A8 | 1 mipmaps)
+sprite loaded: ole2-1.png<\0>
+INFO: FILEIO: [Textures/printer-0.png] File loaded successfully
+INFO: IMAGE: Data loaded successfully (48x48 | R8G8B8A8 | 1 mipmaps)
+INFO: TEXTURE: [ID 26] Texture loaded successfully (48x48 | R8G8B8A8 | 1 mipmaps)
+sprite loaded: printer-0.png<\0>
+INFO: FILEIO: [Textures/Recolour.png] File loaded successfully
+INFO: IMAGE: Data loaded successfully (32x32 | R8G8B8A8 | 1 mipmaps)
+INFO: TEXTURE: [ID 27] Texture loaded successfully (32x32 | R8G8B8A8 | 1 mipmaps)
+sprite loaded: Recolour.png<\0>
+INFO: FILEIO: [Textures/EmbossedTopLeftInverse.png] File loaded successfully
+INFO: IMAGE: Data loaded successfully (2x2 | R8G8B8A8 | 1 mipmaps)
+INFO: TEXTURE: [ID 28] Texture loaded successfully (2x2 | R8G8B8A8 | 1 mipmaps)
+sprite loaded: EmbossedTopLeftInverse.png<\0>
+INFO: FILEIO: [Textures/ole-1.png] File loaded successfully
+INFO: IMAGE: Data loaded successfully (32x32 | R8G8B8A8 | 1 mipmaps)
+INFO: TEXTURE: [ID 29] Texture loaded successfully (32x32 | R8G8B8A8 | 1 mipmaps)
+sprite loaded: ole-1.png<\0>
+INFO: FILEIO: [Textures/device_rhombic_chip.png] File loaded successfully
+INFO: IMAGE: Data loaded successfully (32x32 | R8G8B8A8 | 1 mipmaps)
+INFO: TEXTURE: [ID 30] Texture loaded successfully (32x32 | R8G8B8A8 | 1 mipmaps)
+sprite loaded: device_rhombic_chip.png<\0>
+INFO: FILEIO: [Textures/arrow-down.png] File loaded successfully
+INFO: IMAGE: Data loaded successfully (7x4 | R8G8B8A8 | 1 mipmaps)
+INFO: TEXTURE: [ID 31] Texture loaded successfully (7x4 | R8G8B8A8 | 1 mipmaps)
+sprite loaded: arrow-down.png<\0>
+INFO: FILEIO: [Textures/arrow-up.png] File loaded successfully
+INFO: IMAGE: Data loaded successfully (7x4 | R8G8B8A8 | 1 mipmaps)
+INFO: TEXTURE: [ID 32] Texture loaded successfully (7x4 | R8G8B8A8 | 1 mipmaps)
+sprite loaded: arrow-up.png<\0>
+INFO: FILEIO: [Textures/arrow-left.png] File loaded successfully
+INFO: IMAGE: Data loaded successfully (4x7 | R8G8B8A8 | 1 mipmaps)
+INFO: TEXTURE: [ID 33] Texture loaded successfully (4x7 | R8G8B8A8 | 1 mipmaps)
+sprite loaded: arrow-left.png<\0>
+INFO: FILEIO: [Textures/EmbossedBottomRightInverse.png] File loaded successfully
+INFO: IMAGE: Data loaded successfully (2x2 | R8G8B8A8 | 1 mipmaps)
+INFO: TEXTURE: [ID 34] Texture loaded successfully (2x2 | R8G8B8A8 | 1 mipmaps)
+sprite loaded: EmbossedBottomRightInverse.png<\0>
+INFO: FILEIO: [Textures/EmbossedRight.png] File loaded successfully
+INFO: IMAGE: Data loaded successfully (2x1 | R8G8B8A8 | 1 mipmaps)
+INFO: TEXTURE: [ID 35] Texture loaded successfully (2x1 | R8G8B8A8 | 1 mipmaps)
+sprite loaded: EmbossedRight.png<\0>
+INFO: FILEIO: [Textures/FileBrowserOpen.png] File loaded successfully
+INFO: IMAGE: Data loaded successfully (32x32 | R8G8B8A8 | 1 mipmaps)
+INFO: TEXTURE: [ID 36] Texture loaded successfully (32x32 | R8G8B8A8 | 1 mipmaps)
+sprite loaded: FileBrowserOpen.png<\0>
+INFO: FILEIO: [Textures/EmbossedLeft.png] File loaded successfully
+INFO: IMAGE: Data loaded successfully (2x1 | R8G8B8A8 | 1 mipmaps)
+INFO: TEXTURE: [ID 37] Texture loaded successfully (2x1 | R8G8B8A8 | 1 mipmaps)
+sprite loaded: EmbossedLeft.png<\0>
+INFO: FILEIO: [Textures/Folder.png] File loaded successfully
+INFO: IMAGE: Data loaded successfully (16x16 | R8G8B8A8 | 1 mipmaps)
+INFO: TEXTURE: [ID 38] Texture loaded successfully (16x16 | R8G8B8A8 | 1 mipmaps)
+sprite loaded: Folder.png<\0>
+INFO: FILEIO: [Textures/RelevantOff.png] File loaded successfully
+INFO: IMAGE: Data loaded successfully (32x32 | R8G8B8A8 | 1 mipmaps)
+INFO: TEXTURE: [ID 39] Texture loaded successfully (32x32 | R8G8B8A8 | 1 mipmaps)
+sprite loaded: RelevantOff.png<\0>
+INFO: FILEIO: [Textures/EmbossedTop.png] File loaded successfully
+INFO: IMAGE: Data loaded successfully (1x2 | R8G8B8A8 | 1 mipmaps)
+INFO: TEXTURE: [ID 40] Texture loaded successfully (1x2 | R8G8B8A8 | 1 mipmaps)
+sprite loaded: EmbossedTop.png<\0>
+INFO: FILEIO: [Textures/search_file_2-2.png] File loaded successfully
+INFO: IMAGE: Data loaded successfully (48x48 | R8G8B8A8 | 1 mipmaps)
+INFO: TEXTURE: [ID 41] Texture loaded successfully (48x48 | R8G8B8A8 | 1 mipmaps)
+sprite loaded: search_file_2-2.png<\0>
+INFO: FILEIO: [Textures/expand_hierarchial_array-0.png] File loaded successfully
+INFO: IMAGE: Data loaded successfully (32x32 | R8G8B8A8 | 1 mipmaps)
+INFO: TEXTURE: [ID 42] Texture loaded successfully (32x32 | R8G8B8A8 | 1 mipmaps)
+sprite loaded: expand_hierarchial_array-0.png<\0>
+INFO: FILEIO: [Textures/EmbossedBottomLeft.png] File loaded successfully
+INFO: IMAGE: Data loaded successfully (2x2 | R8G8B8A8 | 1 mipmaps)
+INFO: TEXTURE: [ID 43] Texture loaded successfully (2x2 | R8G8B8A8 | 1 mipmaps)
+sprite loaded: EmbossedBottomLeft.png<\0>
+INFO: FILEIO: [Textures/ModuleTreeOpen.png] File loaded successfully
+INFO: IMAGE: Data loaded successfully (48x48 | R8G8B8A8 | 1 mipmaps)
+INFO: TEXTURE: [ID 44] Texture loaded successfully (48x48 | R8G8B8A8 | 1 mipmaps)
+sprite loaded: ModuleTreeOpen.png<\0>
+INFO: FILEIO: [Textures/FileUnknown.png] File loaded successfully
+INFO: IMAGE: Data loaded successfully (16x16 | R8G8B8A8 | 1 mipmaps)
+INFO: TEXTURE: [ID 45] Texture loaded successfully (16x16 | R8G8B8A8 | 1 mipmaps)
+sprite loaded: FileUnknown.png<\0>
+INFO: FILEIO: [Textures/ModelsListOpen.png] File loaded successfully
+INFO: IMAGE: Data loaded successfully (32x22 | R8G8B8A8 | 1 mipmaps)
+INFO: TEXTURE: [ID 46] Texture loaded successfully (32x22 | R8G8B8A8 | 1 mipmaps)
+sprite loaded: ModelsListOpen.png<\0>
+INFO: FILEIO: [Textures/network_drive_unavailable-2.png] File loaded successfully
+INFO: IMAGE: Data loaded successfully (32x32 | R8G8B8A8 | 1 mipmaps)
+INFO: TEXTURE: [ID 47] Texture loaded successfully (32x32 | R8G8B8A8 | 1 mipmaps)
+sprite loaded: network_drive_unavailable-2.png<\0>
+INFO: FILEIO: [Textures/arrow-right.png] File loaded successfully
+INFO: IMAGE: Data loaded successfully (4x7 | R8G8B8A8 | 1 mipmaps)
+INFO: TEXTURE: [ID 48] Texture loaded successfully (4x7 | R8G8B8A8 | 1 mipmaps)
+sprite loaded: arrow-right.png<\0>
+INFO: FILEIO: [Textures/msg_error-0.png] File loaded successfully
+INFO: IMAGE: Data loaded successfully (30x30 | R8G8B8A8 | 1 mipmaps)
+INFO: TEXTURE: [ID 49] Texture loaded successfully (30x30 | R8G8B8A8 | 1 mipmaps)
+sprite loaded: msg_error-0.png<\0>
+INFO: FILEIO: [Textures/FileModel.png] File loaded successfully
+INFO: IMAGE: Data loaded successfully (16x16 | R8G8B8A8 | 1 mipmaps)
+INFO: TEXTURE: [ID 50] Texture loaded successfully (16x16 | R8G8B8A8 | 1 mipmaps)
+sprite loaded: FileModel.png<\0>
+INFO: FILEIO: [Textures/printer_plotter-0.png] File loaded successfully
+INFO: IMAGE: Data loaded successfully (32x32 | GRAY_ALPHA | 1 mipmaps)
+INFO: TEXTURE: [ID 51] Texture loaded successfully (32x32 | GRAY_ALPHA | 1 mipmaps)
+sprite loaded: printer_plotter-0.png<\0>
+INFO: FILEIO: [Textures/FileConfig.png] File loaded successfully
+INFO: IMAGE: Data loaded successfully (16x16 | R8G8B8A8 | 1 mipmaps)
+INFO: TEXTURE: [ID 52] Texture loaded successfully (16x16 | R8G8B8A8 | 1 mipmaps)
+sprite loaded: FileConfig.png<\0>
+INFO: FILEIO: [Textures/EmbossedTopRightInverse.png] File loaded successfully
+INFO: IMAGE: Data loaded successfully (2x2 | R8G8B8A8 | 1 mipmaps)
+INFO: TEXTURE: [ID 53] Texture loaded successfully (2x2 | R8G8B8A8 | 1 mipmaps)
+sprite loaded: EmbossedTopRightInverse.png<\0>
+INFO: TIMER: Target time per frame: 16.667 milliseconds
+clicked on a .cfg file
+reading file: ../../../MediumDockingPort.cfg
+reached end of file
+is a part config file
+opened config file: ../../../MediumDockingPort.cfg
+contents:
+PART
+{
+	name = ExtraDockingPorts-MediumDockingPort
+	module = Part
+	author = coldrifting
+
+	MODEL
+	{
+		model = ExtraDockingPorts/Parts/MediumDockingPort
+	}
+	scale = 1
+	rescaleFactor = 1
+
+	NODE
+	{
+		name = Top
+		transform = nodeTop
+		size = 2
+		method = LOCKED_JOINT
+	}
+
+	NODE
+	{
+		name = Bottom
+		transform = nodeBottom
+		size = 2
+		method = LOCKED_JOINT
+	}
+
+	
+	attachRules = 1,1,1,0,0
+	node_attach = 0.0, 0.0, 0.0, 0.0, -1.0, 0.0
+
+	TechRequired = composites
+	entryCost = 12500
+	cost = 1100
+	category = Coupling
+	bulkheadProfiles = size1p5, srf
+
+	title = #LOC_ExtraDockingPorts_MediumDockingPort_Title
+	description = #LOC_ExtraDockingPorts_MediumDockingPort_Description
+	tags = #LOC_ExtraDockingPorts_MediumDockingPort_Tags
+	manufacturer = #LOC_ExtraDockingPorts_Agency
+
+	mass = 0.1
+	maxTemp = 2000
+	crashTolerance = 15
+	analyticSkinInsulationFactor = 0.3
+	explosionPotential = 0
+
+	dragModelType = default
+	maximum_drag = 0.25
+	minimum_drag = 0.25
+	angularDrag = 0.5
+
+	fuelCrossFeed = True
+	stagingIcon = DECOUPLER_VERT
+
+	MODULE
+	{
+		name = ModulePartVariants
+		baseVariant = Gray with Stripes
+		useMultipleDragCubes = false
+		VARIANT
+		{
+			name = Gray with Stripes
+			displayname = #autoLOC_8320084
+			themeName = Gray
+			primaryColor = #999999
+			secondaryColor = #b08b39
+			GAMEOBJECTS
+			{
+				portBase = true
+				portBaseAlt = false
+			}
+		}
+		VARIANT
+		{
+			name = Gray
+			displayname = #autoLOC_8007101
+			themeName = Gray
+			primaryColor = #999999
+			secondaryColor = #999999
+			GAMEOBJECTS
+			{
+				portBase = false
+				portBaseAlt = true
+			}
+		}
+		VARIANT
+		{
+			name = White
+			displayname = #autoLOC_8007119
+			themeName = White
+			primaryColor = #ffffff
+			secondaryColor = #999999
+			GAMEOBJECTS
+			{
+				portBase = false
+				portBaseAlt = true
+			}
+			TEXTURE
+			{
+				materialName = MediumDockingPort
+				_MainTex = ExtraDockingPorts/Parts/MediumDockingPort_alt
+			}
+		}
+	}
+
+	MODULE
+	{
+		name = ModuleDockingNode
+		nodeTransformName = nodeTop
+		referenceAttachNode = Top
+		nodeType = size1p5
+		stagingEnabled = False
+		canRotate = True
+		rotationTransformName = portRotate
+		maxMotorOutput = 400
+		RESOURCE
+		{
+			name = ElectricCharge
+			rate = 1
+		}
+		rotationAxis = Y
+	}
+
+	MODULE
+	{
+		name = ModuleCargoPart
+		packedVolume = 1200
+	}
+
+	MODULE
+	{
+		name = ModuleColorChanger
+		shaderProperty = _EmissiveColor
+		animRate = 0.8
+		animState = false
+		useRate = true
+		toggleInEditor = true
+		toggleInFlight = true
+		unfocusedRange = 5
+		toggleName = #autoLOC_502011 
+		eventOnName = #autoLOC_502012 
+		eventOffName = #autoLOC_502013 
+		toggleAction = True
+		defaultActionGroup = Light
+		redCurve
+		{
+			key = 0 0 0 3
+			key = 1 1 0 0
+		}
+		greenCurve
+		{
+			key = 0 0 0 1
+			key = 1 1 1 0
+		}
+		blueCurve
+		{
+			key = 0 0 0 0
+			key = 1 0.7 1.5 0
+		}
+		alphaCurve
+		{
+			key = 0 1
+		}
+	}
+}
+
+name = ExtraDockingPorts-MediumDockingPort
+module = Part
+author = coldrifting
+model = ExtraDockingPorts/Parts/MediumDockingPort
+scale = 1
+rescaleFactor = 1
+name = Top
+transform = nodeTop
+size = 2
+method = LOCKED_JOINT
+name = Bottom
+transform = nodeBottom
+size = 2
+method = LOCKED_JOINT
+attachRules = 1,1,1,0,0
+node_attach = 0.0, 0.0, 0.0, 0.0, -1.0, 0.0
+TechRequired = composites
+entryCost = 12500
+cost = 1100
+category = Coupling
+bulkheadProfiles = size1p5, srf
+title = #LOC_ExtraDockingPorts_MediumDockingPort_Title
+description = #LOC_ExtraDockingPorts_MediumDockingPort_Description
+tags = #LOC_ExtraDockingPorts_MediumDockingPort_Tags
+manufacturer = #LOC_ExtraDockingPorts_Agency
+mass = 0.1
+maxTemp = 2000
+crashTolerance = 15
+analyticSkinInsulationFactor = 0.3
+explosionPotential = 0
+dragModelType = default
+maximum_drag = 0.25
+minimum_drag = 0.25
+angularDrag = 0.5
+fuelCrossFeed = True
+stagingIcon = DECOUPLER_VERT
+name = ModulePartVariants
+baseVariant = Gray with Stripes
+useMultipleDragCubes = false
+name = Gray with Stripes
+displayname = #autoLOC_8320084
+themeName = Gray
+primaryColor = #999999
+secondaryColor = #b08b39
+portBase = true
+portBaseAlt = false
+name = Gray
+displayname = #autoLOC_8007101
+themeName = Gray
+primaryColor = #999999
+secondaryColor = #999999
+portBase = false
+portBaseAlt = true
+name = White
+displayname = #autoLOC_8007119
+themeName = White
+primaryColor = #ffffff
+secondaryColor = #999999
+portBase = false
+portBaseAlt = true
+materialName = MediumDockingPort
+_MainTex = ExtraDockingPorts/Parts/MediumDockingPort_alt
+name = ModuleDockingNode
+nodeTransformName = nodeTop
+referenceAttachNode = Top
+nodeType = size1p5
+stagingEnabled = False
+canRotate = True
+rotationTransformName = portRotate
+maxMotorOutput = 400
+name = ElectricCharge
+rate = 1
+rotationAxis = Y
+name = ModuleCargoPart
+packedVolume = 1200
+name = ModuleColorChanger
+shaderProperty = _EmissiveColor
+animRate = 0.8
+animState = false
+useRate = true
+toggleInEditor = true
+toggleInFlight = true
+unfocusedRange = 5
+toggleName = #autoLOC_502011
+eventOnName = #autoLOC_502012
+eventOffName = #autoLOC_502013
+toggleAction = True
+defaultActionGroup = Light
+key = 0 0 0 3
+key = 1 1 0 0
+key = 0 0 0 1
+key = 1 1 1 0
+key = 0 0 0 0
+key = 1 0.7 1.5 0
+key = 0 1
+
+found: 1 model modules
+found: 0 mesh properties
+converted config file path to: ../../../exportedUVMaps/ExtraDockingPorts/Parts/MediumDockingPort/ModelData.txt<\0>
+ERROR: Could not open: (null) because: Bad address
+1 models
+INFO: TEXTURE: [ID 2] Unloaded texture data from VRAM (GPU)
+INFO: SHADER: [ID 3] Default shader unloaded successfully
+INFO: TEXTURE: [ID 1] Default texture unloaded successfully
+INFO: Window closed successfully
