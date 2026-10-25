@@ -19,7 +19,7 @@ Uses [Raylib](https://github.com/raysan5/raylib) for rendering and [Clay](https:
 - In the build folder, run either "RecolourMaker.exe" if you are on windows or "RecolourMaker" if you are on linux.
 
 ## Use:
-- To begin, select a part.cfg file ([Config icon](https://github.com/ZZetho/pics/blob/main/FileConfig.png?raw=true)) using the file browser on the left, you can click the (![Exit button](https://github.com/ZZetho/pics/blob/main/FileExit.png?raw=true)) to exit a folder.
+- To begin, select a part.cfg file using the file browser on the left, you can click the (![Exit button](https://github.com/ZZetho/pics/blob/main/FileExit.png?raw=true)) to exit a folder.
 - Press the recolour button (![Recolour Button](https://github.com/ZZetho/pics/blob/main/Recolour.png?raw=true)) to generate the default and recolour configs.
 - Two configs will be created, a default and a recolour one, the default config adds texture switches to the part and creates texture sets to replace the parts materials, the recolour config creates texture sets with materials that can be recoloured and adds them to the texture switches added by the default config.
 - Press the copy button (![Copy Button](https://github.com/ZZetho/pics/blob/main/Copy.png?raw=true)) above the default / recolour config to copy that config to your clipboard, which can then be pasted in your .cfg files.
