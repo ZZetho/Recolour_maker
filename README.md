@@ -1,7 +1,8 @@
 # Textures Unlimited Recolour Maker
-A program for automating the creation of config files that use Textures Unlimited to recolour parts in Kerbal Space Program.  
-Takes a part.cfg file and constructs a pair of apropriate config files, one to convert the part to use a TU texture switch, and one to add recolouring to the part.  
-_Features classic windows 98 stylings, for a charmingly retro yet practical aesthetic! 😁️_
+Automates the creation of the config files that [Textures Unlimited](https://github.com/KSPModStewards/TexturesUnlimited) uses to recolour parts in Kerbal Space Program.  
+This program takes a part.cfg file and constructs a pair of appropriate config files, one to convert the part to replace the stock material with a TU texture set, and one to add a recolourable texture set to the part.  
+_Features classic windows 98 stylings, for a charmingly retro yet practical aesthetic!_ 😁️  
+Uses [Raylib](https://github.com/raysan5/raylib) for rendering and [Clay](https://github.com/nicbarker/clay) for building the UI.
 
 ## Features:
 - Automatic part.cfg parsing into a tree of modules.
@@ -11,8 +12,10 @@ _Features classic windows 98 stylings, for a charmingly retro yet practical aest
 - Automatic generation of materials, texture sets, texture switches and @PART configs to recolour a part.
 
 ## To install and run:
+- Make sure Textures Unlimited is installed.
 - Download and unzip the files.
 - Put the Recolour_Maker folder directly inside GameData.
+- Go to GameData/000_TexturesUnlimited/GeneralConfiguration.cfg and change exportUVs to true, then launch KSP (you only need to do this once), this will create the ModelData.txt files that are needed for recolouring, KSP does not need to remain running.
 - In the build folder, run either "RecolourMaker.exe" if you are on windows or "RecolourMaker" if you are on linux.
 
 ## Use:
@@ -40,6 +43,11 @@ Currently only includes build for x86_64 both Windows and Linux.
 
 ## Known bugs:
 Fails to correctly parse inline Modules, fotunatley these are extremly rare.
+
+## Credits:
+- shadowmage45, for creating [Textures Unlimited](https://github.com/KSPModStewards/TexturesUnlimited).
+- Ramon Santamaria, for creating [Raylib](https://github.com/raysan5/raylib).
+- Nic Barker, for creating [Clay](https://github.com/nicbarker/clay).
 
 ## License:
 MIT

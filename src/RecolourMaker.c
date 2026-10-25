@@ -40,8 +40,8 @@
 
 // using clay for the ui
 #define CLAY_IMPLEMENTATION
-#include "clay.h"
-#include "clay_renderer_raylib.c"
+#include "Clay/clay.h"
+#include "Clay/clay_renderer_raylib.c"
 
 #include <raylib.h>
 #include <raymath.h>
@@ -52,7 +52,7 @@
 #include <stdlib.h>
 #include <stdint.h>
 
-#define int int32_t
+#define int int32_t //😁️
 
 //▀█▀ █▄█ █▀█ █▀▀ █▀
 //░█░ ░█░ █▀▀ ██▄ ▄█
