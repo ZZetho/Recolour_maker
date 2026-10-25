@@ -9,7 +9,7 @@ Uses [Raylib](https://github.com/raysan5/raylib) for rendering and [Clay](https:
 - Automatic ModelData.txt locating and parsing into a list of materials, as opposed to the list of meshes it starts as.
 - Click to copy any of the properties of the part.cfg or ModelData.
 - Buttons (![Important Modules Button](https://github.com/ZZetho/pics/blob/main/ModuleTreeRelevantOn.png?raw=true), ![Important materials button](https://github.com/ZZetho/pics/blob/main/ModelsListRelevantOn.png?raw=true)) To show / hide the modules and materials that are relevant to recolouring.
-- Automatic generation of materials, texture sets, texture switches and @PART configs to recolour a part.
+- Automatic generation of a texture switch and the appropriate texture sets to convert the part to being recolourable for each material, irrelevant materials, such as those for rendering particles or flags are automatically ignored.
 
 ## To install and run:
 - Make sure Textures Unlimited is installed.
@@ -19,15 +19,15 @@ Uses [Raylib](https://github.com/raysan5/raylib) for rendering and [Clay](https:
 - In the build folder, run either "RecolourMaker.exe" if you are on windows or "RecolourMaker" if you are on linux.
 
 ## Use:
-- To begin, select a part.cfg file using the file browser.
+- To begin, select a part.cfg file ([Config icon](https://github.com/ZZetho/pics/blob/main/FileConfig.png?raw=true)) using the file browser on the left, you can click the ![Exit button](https://github.com/ZZetho/pics/blob/main/FileExit.png?raw=true) to exit a folder.
 - Press the recolour button (![Recolour Button](https://github.com/ZZetho/pics/blob/main/Recolour.png?raw=true)) to generate the default and recolour configs.
 - Two configs will be created, a default and a recolour one, the default config adds texture switches to the part and creates texture sets to replace the parts materials, the recolour config creates texture sets with materials that can be recoloured and adds them to the texture switches added by the default config.
 - Press the copy button (![Copy Button](https://github.com/ZZetho/pics/blob/main/Copy.png?raw=true)) above the default / recolour config to copy that config to your clipboard, which can then be pasted in your .cfg files.
 
 ## Roadmap:
-- Currently creates a texture switch for each relevant material the part uses, it should detect when those materials are part of variants and as such the texture switcher can be combined.
+- Currently creates a texture switch for each relevant material the part uses, it should detect when those materials are part of variants and, as such the texture switches can be combined.
 - Allow selecting a maskTex before generating recolour configs, so that vectors can be automatically calculated.
-- Overlays a wireframe of the model onto the parts textures so that it is obvious what materials correspond to where.
+- Overlays a labeled wireframe of the model onto the parts textures so that it is obvious what materials / meshes correspond to where.
 - Show a 3D model of the selected part, with labeled meshes and overlaid with maskTex (This'll be real hard).
 
 ## Building from source:
@@ -43,6 +43,7 @@ Currently only includes build for x86_64 both Windows and Linux.
 
 ## Known bugs:
 Fails to correctly parse inline Modules, fotunatley these are extremly rare.
+Sometimes the materials that are ignored are actually important.
 
 ## Credits:
 - shadowmage45, for creating [Textures Unlimited](https://github.com/KSPModStewards/TexturesUnlimited).
