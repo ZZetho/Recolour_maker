@@ -151,6 +151,7 @@ static inline Clay_Dimensions Raylib_MeasureText(Clay_StringSlice text, Clay_Tex
 
     for (int i = 0; i < text.length; ++i, lineCharCount++)
     {
+    	printf("char %d: <%c>, ", i, text.chars[i]);
         if (text.chars[i] == '\n') {
             maxTextWidth = fmax(maxTextWidth, lineTextWidth);
             maxLineCharCount = CLAY__MAX(maxLineCharCount, lineCharCount);
@@ -158,17 +159,34 @@ static inline Clay_Dimensions Raylib_MeasureText(Clay_StringSlice text, Clay_Tex
             lineCharCount = 0;
             continue;
         }
+        
         int index = text.chars[i] - 32;
-        if (fontToUse.glyphs[index].advanceX != 0) lineTextWidth += fontToUse.glyphs[index].advanceX;
-        else lineTextWidth += (fontToUse.recs[index].width + fontToUse.glyphs[index].offsetX);
+        
+        // for some reason tabs are really wide (fontToUse.recs[index].width has a value of 3427746560.000000) if the program is run with wine
+        // this stops that
+        if (text.chars[i] == '	')
+        {
+        	lineTextWidth += 10;
+        }
+        else if (fontToUse.glyphs[index].advanceX != 0)
+        {
+        	lineTextWidth += fontToUse.glyphs[index].advanceX;
+        } 
+        else
+        {
+        	//printf("width: %f\n", fontToUse.recs[index].width);
+        	lineTextWidth += (fontToUse.recs[index].width + fontToUse.glyphs[index].offsetX);
+        }
     }
-
+	
+	printf("\n");
+	
     maxTextWidth = fmax(maxTextWidth, lineTextWidth);
     maxLineCharCount = CLAY__MAX(maxLineCharCount, lineCharCount);
 
     textSize.width = maxTextWidth * scaleFactor + (lineCharCount * config->letterSpacing);
     textSize.height = textHeight;
-
+    
     return textSize;
 }
 

@@ -4679,13 +4679,13 @@ void DrawRecolour(RecolourConfig recolour)
 int main(void)
 {
 	// send printf to a log file
-//	if (freopen("RecolourMaker.log", "w", stdout) == NULL)
-//	{
-//		int err = errno;
-//		printf("ERROR: Could not redirect stdout, because: %s\n", strerror(err));
-//		
-//		return 1;
-//	}
+	if (freopen("RecolourMaker.log", "w", stdout) == NULL)
+	{
+		int err = errno;
+		printf("ERROR: Could not redirect stdout, because: %s\n", strerror(err));
+		
+		return 1;
+	}
 	
 	//-------------------------------------------------------------------------------------- Initialization
 	int screenWidth = 1440;
