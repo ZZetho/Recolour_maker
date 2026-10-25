@@ -4,8 +4,6 @@ This program takes a part.cfg file and constructs a pair of appropriate config f
 _Features classic windows 98 stylings, for a charmingly retro yet practical aesthetic!_ 😁️  
 Uses [Raylib](https://github.com/raysan5/raylib) for rendering and [Clay](https://github.com/nicbarker/clay) for building the UI.  
 
-[Banner pic](https://github.com/ZZetho/pics/blob/main/Recolour_maker_pic.png?raw=true)
-
 ## Features:
 - Automatic part.cfg parsing into a tree of modules.
 - Automatic ModelData.txt locating and parsing into a list of materials, as opposed to the list of meshes it starts as.
