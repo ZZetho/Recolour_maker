@@ -2,7 +2,9 @@
 Automates the creation of the config files that [Textures Unlimited](https://github.com/KSPModStewards/TexturesUnlimited) uses to recolour parts in Kerbal Space Program.  
 This program takes a part.cfg file and constructs a pair of appropriate config files, one to convert the part to replace the stock material with a TU texture set, and one to add a recolourable texture set to the part.  
 _Features classic windows 98 stylings, for a charmingly retro yet practical aesthetic!_ 😁️  
-Uses [Raylib](https://github.com/raysan5/raylib) for rendering and [Clay](https://github.com/nicbarker/clay) for building the UI.
+Uses [Raylib](https://github.com/raysan5/raylib) for rendering and [Clay](https://github.com/nicbarker/clay) for building the UI.  
+
+[Banner pic](https://github.com/ZZetho/pics/blob/main/Recolour_maker_pic.png?raw=true)
 
 ## Features:
 - Automatic part.cfg parsing into a tree of modules.
@@ -46,7 +48,7 @@ Fails to correctly parse inline Modules, fotunatley these are extremly rare.
 Sometimes the materials that are ignored are actually important.
 
 ## Reporting bugs:
-Please include RecolourMaker.log (in the build folder) and the part you were trying to recolour in your report. 😘️
+Report bugs on this repositories issues page ([Here](https://github.com/ZZetho/Recolour_maker/issues)), or the KSP forum thread ([Here]()), Please include RecolourMaker.log (in the build folder), the part you were trying to recolour and what mod it is from in your report, thx 😘️.
 
 ## Credits:
 - shadowmage45, for creating [Textures Unlimited](https://github.com/KSPModStewards/TexturesUnlimited).
