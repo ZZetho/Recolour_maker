@@ -233,13 +233,13 @@ update_mappings/fast:
 	$(MAKE) $(MAKESILENT) -f _deps/raylib-build/raylib/external/glfw/src/CMakeFiles/update_mappings.dir/build.make _deps/raylib-build/raylib/external/glfw/src/CMakeFiles/update_mappings.dir/build
 .PHONY : update_mappings/fast
 
-RecolourMaker.obj: RecolourMaker.c.obj
-.PHONY : RecolourMaker.obj
+RecolourMaker.o: RecolourMaker.c.o
+.PHONY : RecolourMaker.o
 
 # target to build an object file
-RecolourMaker.c.obj:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/RecolourMaker.dir/build.make CMakeFiles/RecolourMaker.dir/RecolourMaker.c.obj
-.PHONY : RecolourMaker.c.obj
+RecolourMaker.c.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/RecolourMaker.dir/build.make CMakeFiles/RecolourMaker.dir/RecolourMaker.c.o
+.PHONY : RecolourMaker.c.o
 
 RecolourMaker.i: RecolourMaker.c.i
 .PHONY : RecolourMaker.i
@@ -275,7 +275,7 @@ help:
 	@echo "... RecolourMaker"
 	@echo "... glfw"
 	@echo "... raylib"
-	@echo "... RecolourMaker.obj"
+	@echo "... RecolourMaker.o"
 	@echo "... RecolourMaker.i"
 	@echo "... RecolourMaker.s"
 .PHONY : help

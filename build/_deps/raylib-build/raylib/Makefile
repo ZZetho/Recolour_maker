@@ -195,13 +195,13 @@ raylib/fast:
 	cd "/home/jhon/.wine/drive_c/GOG Games/Kerbal Space Program/GameData/zzz_RecolourConfigCreator/build" && $(MAKE) $(MAKESILENT) -f _deps/raylib-build/raylib/CMakeFiles/raylib.dir/build.make _deps/raylib-build/raylib/CMakeFiles/raylib.dir/build
 .PHONY : raylib/fast
 
-raudio.obj: raudio.c.obj
-.PHONY : raudio.obj
+raudio.o: raudio.c.o
+.PHONY : raudio.o
 
 # target to build an object file
-raudio.c.obj:
-	cd "/home/jhon/.wine/drive_c/GOG Games/Kerbal Space Program/GameData/zzz_RecolourConfigCreator/build" && $(MAKE) $(MAKESILENT) -f _deps/raylib-build/raylib/CMakeFiles/raylib.dir/build.make _deps/raylib-build/raylib/CMakeFiles/raylib.dir/raudio.c.obj
-.PHONY : raudio.c.obj
+raudio.c.o:
+	cd "/home/jhon/.wine/drive_c/GOG Games/Kerbal Space Program/GameData/zzz_RecolourConfigCreator/build" && $(MAKE) $(MAKESILENT) -f _deps/raylib-build/raylib/CMakeFiles/raylib.dir/build.make _deps/raylib-build/raylib/CMakeFiles/raylib.dir/raudio.c.o
+.PHONY : raudio.c.o
 
 raudio.i: raudio.c.i
 .PHONY : raudio.i
@@ -219,13 +219,13 @@ raudio.c.s:
 	cd "/home/jhon/.wine/drive_c/GOG Games/Kerbal Space Program/GameData/zzz_RecolourConfigCreator/build" && $(MAKE) $(MAKESILENT) -f _deps/raylib-build/raylib/CMakeFiles/raylib.dir/build.make _deps/raylib-build/raylib/CMakeFiles/raylib.dir/raudio.c.s
 .PHONY : raudio.c.s
 
-rcore.obj: rcore.c.obj
-.PHONY : rcore.obj
+rcore.o: rcore.c.o
+.PHONY : rcore.o
 
 # target to build an object file
-rcore.c.obj:
-	cd "/home/jhon/.wine/drive_c/GOG Games/Kerbal Space Program/GameData/zzz_RecolourConfigCreator/build" && $(MAKE) $(MAKESILENT) -f _deps/raylib-build/raylib/CMakeFiles/raylib.dir/build.make _deps/raylib-build/raylib/CMakeFiles/raylib.dir/rcore.c.obj
-.PHONY : rcore.c.obj
+rcore.c.o:
+	cd "/home/jhon/.wine/drive_c/GOG Games/Kerbal Space Program/GameData/zzz_RecolourConfigCreator/build" && $(MAKE) $(MAKESILENT) -f _deps/raylib-build/raylib/CMakeFiles/raylib.dir/build.make _deps/raylib-build/raylib/CMakeFiles/raylib.dir/rcore.c.o
+.PHONY : rcore.c.o
 
 rcore.i: rcore.c.i
 .PHONY : rcore.i
@@ -243,13 +243,13 @@ rcore.c.s:
 	cd "/home/jhon/.wine/drive_c/GOG Games/Kerbal Space Program/GameData/zzz_RecolourConfigCreator/build" && $(MAKE) $(MAKESILENT) -f _deps/raylib-build/raylib/CMakeFiles/raylib.dir/build.make _deps/raylib-build/raylib/CMakeFiles/raylib.dir/rcore.c.s
 .PHONY : rcore.c.s
 
-rmodels.obj: rmodels.c.obj
-.PHONY : rmodels.obj
+rmodels.o: rmodels.c.o
+.PHONY : rmodels.o
 
 # target to build an object file
-rmodels.c.obj:
-	cd "/home/jhon/.wine/drive_c/GOG Games/Kerbal Space Program/GameData/zzz_RecolourConfigCreator/build" && $(MAKE) $(MAKESILENT) -f _deps/raylib-build/raylib/CMakeFiles/raylib.dir/build.make _deps/raylib-build/raylib/CMakeFiles/raylib.dir/rmodels.c.obj
-.PHONY : rmodels.c.obj
+rmodels.c.o:
+	cd "/home/jhon/.wine/drive_c/GOG Games/Kerbal Space Program/GameData/zzz_RecolourConfigCreator/build" && $(MAKE) $(MAKESILENT) -f _deps/raylib-build/raylib/CMakeFiles/raylib.dir/build.make _deps/raylib-build/raylib/CMakeFiles/raylib.dir/rmodels.c.o
+.PHONY : rmodels.c.o
 
 rmodels.i: rmodels.c.i
 .PHONY : rmodels.i
@@ -267,13 +267,13 @@ rmodels.c.s:
 	cd "/home/jhon/.wine/drive_c/GOG Games/Kerbal Space Program/GameData/zzz_RecolourConfigCreator/build" && $(MAKE) $(MAKESILENT) -f _deps/raylib-build/raylib/CMakeFiles/raylib.dir/build.make _deps/raylib-build/raylib/CMakeFiles/raylib.dir/rmodels.c.s
 .PHONY : rmodels.c.s
 
-rshapes.obj: rshapes.c.obj
-.PHONY : rshapes.obj
+rshapes.o: rshapes.c.o
+.PHONY : rshapes.o
 
 # target to build an object file
-rshapes.c.obj:
-	cd "/home/jhon/.wine/drive_c/GOG Games/Kerbal Space Program/GameData/zzz_RecolourConfigCreator/build" && $(MAKE) $(MAKESILENT) -f _deps/raylib-build/raylib/CMakeFiles/raylib.dir/build.make _deps/raylib-build/raylib/CMakeFiles/raylib.dir/rshapes.c.obj
-.PHONY : rshapes.c.obj
+rshapes.c.o:
+	cd "/home/jhon/.wine/drive_c/GOG Games/Kerbal Space Program/GameData/zzz_RecolourConfigCreator/build" && $(MAKE) $(MAKESILENT) -f _deps/raylib-build/raylib/CMakeFiles/raylib.dir/build.make _deps/raylib-build/raylib/CMakeFiles/raylib.dir/rshapes.c.o
+.PHONY : rshapes.c.o
 
 rshapes.i: rshapes.c.i
 .PHONY : rshapes.i
@@ -291,13 +291,13 @@ rshapes.c.s:
 	cd "/home/jhon/.wine/drive_c/GOG Games/Kerbal Space Program/GameData/zzz_RecolourConfigCreator/build" && $(MAKE) $(MAKESILENT) -f _deps/raylib-build/raylib/CMakeFiles/raylib.dir/build.make _deps/raylib-build/raylib/CMakeFiles/raylib.dir/rshapes.c.s
 .PHONY : rshapes.c.s
 
-rtext.obj: rtext.c.obj
-.PHONY : rtext.obj
+rtext.o: rtext.c.o
+.PHONY : rtext.o
 
 # target to build an object file
-rtext.c.obj:
-	cd "/home/jhon/.wine/drive_c/GOG Games/Kerbal Space Program/GameData/zzz_RecolourConfigCreator/build" && $(MAKE) $(MAKESILENT) -f _deps/raylib-build/raylib/CMakeFiles/raylib.dir/build.make _deps/raylib-build/raylib/CMakeFiles/raylib.dir/rtext.c.obj
-.PHONY : rtext.c.obj
+rtext.c.o:
+	cd "/home/jhon/.wine/drive_c/GOG Games/Kerbal Space Program/GameData/zzz_RecolourConfigCreator/build" && $(MAKE) $(MAKESILENT) -f _deps/raylib-build/raylib/CMakeFiles/raylib.dir/build.make _deps/raylib-build/raylib/CMakeFiles/raylib.dir/rtext.c.o
+.PHONY : rtext.c.o
 
 rtext.i: rtext.c.i
 .PHONY : rtext.i
@@ -315,13 +315,13 @@ rtext.c.s:
 	cd "/home/jhon/.wine/drive_c/GOG Games/Kerbal Space Program/GameData/zzz_RecolourConfigCreator/build" && $(MAKE) $(MAKESILENT) -f _deps/raylib-build/raylib/CMakeFiles/raylib.dir/build.make _deps/raylib-build/raylib/CMakeFiles/raylib.dir/rtext.c.s
 .PHONY : rtext.c.s
 
-rtextures.obj: rtextures.c.obj
-.PHONY : rtextures.obj
+rtextures.o: rtextures.c.o
+.PHONY : rtextures.o
 
 # target to build an object file
-rtextures.c.obj:
-	cd "/home/jhon/.wine/drive_c/GOG Games/Kerbal Space Program/GameData/zzz_RecolourConfigCreator/build" && $(MAKE) $(MAKESILENT) -f _deps/raylib-build/raylib/CMakeFiles/raylib.dir/build.make _deps/raylib-build/raylib/CMakeFiles/raylib.dir/rtextures.c.obj
-.PHONY : rtextures.c.obj
+rtextures.c.o:
+	cd "/home/jhon/.wine/drive_c/GOG Games/Kerbal Space Program/GameData/zzz_RecolourConfigCreator/build" && $(MAKE) $(MAKESILENT) -f _deps/raylib-build/raylib/CMakeFiles/raylib.dir/build.make _deps/raylib-build/raylib/CMakeFiles/raylib.dir/rtextures.c.o
+.PHONY : rtextures.c.o
 
 rtextures.i: rtextures.c.i
 .PHONY : rtextures.i
@@ -354,22 +354,22 @@ help:
 	@echo "... package_source"
 	@echo "... rebuild_cache"
 	@echo "... raylib"
-	@echo "... raudio.obj"
+	@echo "... raudio.o"
 	@echo "... raudio.i"
 	@echo "... raudio.s"
-	@echo "... rcore.obj"
+	@echo "... rcore.o"
 	@echo "... rcore.i"
 	@echo "... rcore.s"
-	@echo "... rmodels.obj"
+	@echo "... rmodels.o"
 	@echo "... rmodels.i"
 	@echo "... rmodels.s"
-	@echo "... rshapes.obj"
+	@echo "... rshapes.o"
 	@echo "... rshapes.i"
 	@echo "... rshapes.s"
-	@echo "... rtext.obj"
+	@echo "... rtext.o"
 	@echo "... rtext.i"
 	@echo "... rtext.s"
-	@echo "... rtextures.obj"
+	@echo "... rtextures.o"
 	@echo "... rtextures.i"
 	@echo "... rtextures.s"
 .PHONY : help

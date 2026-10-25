@@ -61,7 +61,7 @@ add_library(raylib STATIC IMPORTED)
 set_target_properties(raylib PROPERTIES
   INTERFACE_COMPILE_DEFINITIONS "PLATFORM_DESKTOP;GRAPHICS_API_OPENGL_33"
   INTERFACE_INCLUDE_DIRECTORIES "${_IMPORT_PREFIX}/include"
-  INTERFACE_LINK_LIBRARIES "\$<LINK_ONLY:>;\$<LINK_ONLY:opengl32>;\$<LINK_ONLY:glu32>;\$<LINK_ONLY:winmm>"
+  INTERFACE_LINK_LIBRARIES "\$<LINK_ONLY:>;m;\$<LINK_ONLY:pthread>;\$<LINK_ONLY:/usr/lib/x86_64-linux-gnu/libOpenGL.so>;\$<LINK_ONLY:/usr/lib/x86_64-linux-gnu/libGLX.so>;\$<LINK_ONLY:/usr/lib/x86_64-linux-gnu/libGLU.so>;/usr/lib/x86_64-linux-gnu/libX11.so;/usr/lib/x86_64-linux-gnu/libXext.so"
 )
 
 if(CMAKE_VERSION VERSION_LESS 2.8.12)

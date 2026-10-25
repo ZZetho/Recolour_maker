@@ -1,3 +1,1 @@
-/usr/bin/cmake -E rm -f CMakeFiles/RecolourMaker.dir/objects.a
-/usr/bin/x86_64-w64-mingw32-ar qc CMakeFiles/RecolourMaker.dir/objects.a @CMakeFiles/RecolourMaker.dir/objects1.rsp
-/usr/bin/x86_64-w64-mingw32-gcc -g -Wl,--whole-archive CMakeFiles/RecolourMaker.dir/objects.a -Wl,--no-whole-archive -o RecolourMaker.exe -Wl,--out-implib,libRecolourMaker.dll.a -Wl,--major-image-version,0,--minor-image-version,0 @CMakeFiles/RecolourMaker.dir/linkLibs.rsp
+/usr/bin/gcc -g CMakeFiles/RecolourMaker.dir/RecolourMaker.c.o -o RecolourMaker  _deps/raylib-build/raylib/libraylib.a -lpthread /usr/lib/x86_64-linux-gnu/libOpenGL.so /usr/lib/x86_64-linux-gnu/libGLX.so /usr/lib/x86_64-linux-gnu/libGLU.so /usr/lib/x86_64-linux-gnu/librt.a -lm -ldl -lm /usr/lib/x86_64-linux-gnu/libX11.so /usr/lib/x86_64-linux-gnu/libXext.so 

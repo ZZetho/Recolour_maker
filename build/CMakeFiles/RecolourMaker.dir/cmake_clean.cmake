@@ -1,9 +1,8 @@
 file(REMOVE_RECURSE
-  "CMakeFiles/RecolourMaker.dir/RecolourMaker.c.obj"
-  "CMakeFiles/RecolourMaker.dir/RecolourMaker.c.obj.d"
-  "RecolourMaker.exe"
+  "CMakeFiles/RecolourMaker.dir/RecolourMaker.c.o"
+  "CMakeFiles/RecolourMaker.dir/RecolourMaker.c.o.d"
+  "RecolourMaker"
   "RecolourMaker.pdb"
-  "libRecolourMaker.dll.a"
 )
 
 # Per-language clean rules from dependency scanning.

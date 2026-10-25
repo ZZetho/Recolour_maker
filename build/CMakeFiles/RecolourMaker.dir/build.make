@@ -69,39 +69,43 @@ include CMakeFiles/RecolourMaker.dir/progress.make
 # Include the compile flags for this target's objects.
 include CMakeFiles/RecolourMaker.dir/flags.make
 
-CMakeFiles/RecolourMaker.dir/RecolourMaker.c.obj: CMakeFiles/RecolourMaker.dir/flags.make
-CMakeFiles/RecolourMaker.dir/RecolourMaker.c.obj: CMakeFiles/RecolourMaker.dir/includes_C.rsp
-CMakeFiles/RecolourMaker.dir/RecolourMaker.c.obj: /home/jhon/.wine/drive_c/GOG\ Games/Kerbal\ Space\ Program/GameData/zzz_RecolourConfigCreator/src/RecolourMaker.c
-CMakeFiles/RecolourMaker.dir/RecolourMaker.c.obj: CMakeFiles/RecolourMaker.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir="/home/jhon/.wine/drive_c/GOG Games/Kerbal Space Program/GameData/zzz_RecolourConfigCreator/build/CMakeFiles" --progress-num=$(CMAKE_PROGRESS_1) "Building C object CMakeFiles/RecolourMaker.dir/RecolourMaker.c.obj"
-	/usr/bin/x86_64-w64-mingw32-gcc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -MD -MT CMakeFiles/RecolourMaker.dir/RecolourMaker.c.obj -MF CMakeFiles/RecolourMaker.dir/RecolourMaker.c.obj.d -o CMakeFiles/RecolourMaker.dir/RecolourMaker.c.obj -c "/home/jhon/.wine/drive_c/GOG Games/Kerbal Space Program/GameData/zzz_RecolourConfigCreator/src/RecolourMaker.c"
+CMakeFiles/RecolourMaker.dir/RecolourMaker.c.o: CMakeFiles/RecolourMaker.dir/flags.make
+CMakeFiles/RecolourMaker.dir/RecolourMaker.c.o: /home/jhon/.wine/drive_c/GOG\ Games/Kerbal\ Space\ Program/GameData/zzz_RecolourConfigCreator/src/RecolourMaker.c
+CMakeFiles/RecolourMaker.dir/RecolourMaker.c.o: CMakeFiles/RecolourMaker.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir="/home/jhon/.wine/drive_c/GOG Games/Kerbal Space Program/GameData/zzz_RecolourConfigCreator/build/CMakeFiles" --progress-num=$(CMAKE_PROGRESS_1) "Building C object CMakeFiles/RecolourMaker.dir/RecolourMaker.c.o"
+	/usr/bin/gcc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -MD -MT CMakeFiles/RecolourMaker.dir/RecolourMaker.c.o -MF CMakeFiles/RecolourMaker.dir/RecolourMaker.c.o.d -o CMakeFiles/RecolourMaker.dir/RecolourMaker.c.o -c "/home/jhon/.wine/drive_c/GOG Games/Kerbal Space Program/GameData/zzz_RecolourConfigCreator/src/RecolourMaker.c"
 
 CMakeFiles/RecolourMaker.dir/RecolourMaker.c.i: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing C source to CMakeFiles/RecolourMaker.dir/RecolourMaker.c.i"
-	/usr/bin/x86_64-w64-mingw32-gcc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -E "/home/jhon/.wine/drive_c/GOG Games/Kerbal Space Program/GameData/zzz_RecolourConfigCreator/src/RecolourMaker.c" > CMakeFiles/RecolourMaker.dir/RecolourMaker.c.i
+	/usr/bin/gcc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -E "/home/jhon/.wine/drive_c/GOG Games/Kerbal Space Program/GameData/zzz_RecolourConfigCreator/src/RecolourMaker.c" > CMakeFiles/RecolourMaker.dir/RecolourMaker.c.i
 
 CMakeFiles/RecolourMaker.dir/RecolourMaker.c.s: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling C source to assembly CMakeFiles/RecolourMaker.dir/RecolourMaker.c.s"
-	/usr/bin/x86_64-w64-mingw32-gcc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -S "/home/jhon/.wine/drive_c/GOG Games/Kerbal Space Program/GameData/zzz_RecolourConfigCreator/src/RecolourMaker.c" -o CMakeFiles/RecolourMaker.dir/RecolourMaker.c.s
+	/usr/bin/gcc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -S "/home/jhon/.wine/drive_c/GOG Games/Kerbal Space Program/GameData/zzz_RecolourConfigCreator/src/RecolourMaker.c" -o CMakeFiles/RecolourMaker.dir/RecolourMaker.c.s
 
 # Object files for target RecolourMaker
 RecolourMaker_OBJECTS = \
-"CMakeFiles/RecolourMaker.dir/RecolourMaker.c.obj"
+"CMakeFiles/RecolourMaker.dir/RecolourMaker.c.o"
 
 # External object files for target RecolourMaker
 RecolourMaker_EXTERNAL_OBJECTS =
 
-RecolourMaker.exe: CMakeFiles/RecolourMaker.dir/RecolourMaker.c.obj
-RecolourMaker.exe: CMakeFiles/RecolourMaker.dir/build.make
-RecolourMaker.exe: _deps/raylib-build/raylib/libraylib.a
-RecolourMaker.exe: CMakeFiles/RecolourMaker.dir/linkLibs.rsp
-RecolourMaker.exe: CMakeFiles/RecolourMaker.dir/objects1.rsp
-RecolourMaker.exe: CMakeFiles/RecolourMaker.dir/link.txt
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --bold --progress-dir="/home/jhon/.wine/drive_c/GOG Games/Kerbal Space Program/GameData/zzz_RecolourConfigCreator/build/CMakeFiles" --progress-num=$(CMAKE_PROGRESS_2) "Linking C executable RecolourMaker.exe"
+RecolourMaker: CMakeFiles/RecolourMaker.dir/RecolourMaker.c.o
+RecolourMaker: CMakeFiles/RecolourMaker.dir/build.make
+RecolourMaker: _deps/raylib-build/raylib/libraylib.a
+RecolourMaker: /usr/lib/x86_64-linux-gnu/libOpenGL.so
+RecolourMaker: /usr/lib/x86_64-linux-gnu/libGLX.so
+RecolourMaker: /usr/lib/x86_64-linux-gnu/libGLU.so
+RecolourMaker: /usr/lib/x86_64-linux-gnu/librt.a
+RecolourMaker: /usr/lib/x86_64-linux-gnu/libm.so
+RecolourMaker: /usr/lib/x86_64-linux-gnu/libX11.so
+RecolourMaker: /usr/lib/x86_64-linux-gnu/libXext.so
+RecolourMaker: CMakeFiles/RecolourMaker.dir/link.txt
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --bold --progress-dir="/home/jhon/.wine/drive_c/GOG Games/Kerbal Space Program/GameData/zzz_RecolourConfigCreator/build/CMakeFiles" --progress-num=$(CMAKE_PROGRESS_2) "Linking C executable RecolourMaker"
 	$(CMAKE_COMMAND) -E cmake_link_script CMakeFiles/RecolourMaker.dir/link.txt --verbose=$(VERBOSE)
 
 # Rule to build all files generated by this target.
-CMakeFiles/RecolourMaker.dir/build: RecolourMaker.exe
+CMakeFiles/RecolourMaker.dir/build: RecolourMaker
 .PHONY : CMakeFiles/RecolourMaker.dir/build
 
 CMakeFiles/RecolourMaker.dir/clean:
