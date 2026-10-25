@@ -1,0 +1,7 @@
+build/_deps/
+build/CMakerFiles/
+build/CMakeCache.txt
+build/cmake_install.cmake
+build/CPackConfig.cmake
+build/CPackSourceConfig.cmake
+build/Makefile

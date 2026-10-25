@@ -8,7 +8,7 @@ set(CMAKE_DEPENDS_LANGUAGES
 
 # The set of dependency files which are needed:
 set(CMAKE_DEPENDS_DEPENDENCY_FILES
-  "/home/jhon/.wine/drive_c/GOG Games/Kerbal Space Program/GameData/zzz_RecolourConfigCreator/src/RecolourMaker.c" "CMakeFiles/RecolourMaker.dir/RecolourMaker.c.o" "gcc" "CMakeFiles/RecolourMaker.dir/RecolourMaker.c.o.d"
+  "/home/jhon/.wine/drive_c/GOG Games/Kerbal Space Program/GameData/Recolour_Maker/src/RecolourMaker.c" "CMakeFiles/RecolourMaker.dir/RecolourMaker.c.o" "gcc" "CMakeFiles/RecolourMaker.dir/RecolourMaker.c.o.d"
   )
 
 # Targets to which this target links which contain Fortran sources.

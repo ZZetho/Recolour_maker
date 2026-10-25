@@ -4,7 +4,7 @@
 # compile C with /usr/bin/gcc
 C_DEFINES = -DGRAPHICS_API_OPENGL_33 -DPLATFORM_DESKTOP
 
-C_INCLUDES = -I"/home/jhon/.wine/drive_c/GOG Games/Kerbal Space Program/GameData/zzz_RecolourConfigCreator/build/_deps/raylib-src/src"
+C_INCLUDES = -I"/home/jhon/.wine/drive_c/GOG Games/Kerbal Space Program/GameData/Recolour_Maker/build/_deps/raylib-src/src"
 
 C_FLAGS = -g -Wall -Wextra -Werror -g
 
