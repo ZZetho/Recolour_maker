@@ -27,6 +27,14 @@ _Features classic windows 98 stylings, for a charmingly retro yet practical aest
 - Overlays a wireframe of the model onto the parts textures so that it is obvious what materials correspond to where.
 - Show a 3D model of the selected part, with labeled meshes and overlaid with maskTex (This'll be real hard).
 
+## Building from source:
+In Recolour_Maker, to build for Windows (x86 64) use the command:  
+	cmake -S src -B build --fresh -DCMAKE_TOOLCHAIN_FILE=Windows_64.cmake  
+For Linux (x86 64), use:  
+	cmake -S src -B build --fresh -DCMAKE_TOOLCHAIN_FILE=Linux_64.cmake  
+Then, go into build and use the command:  
+	make
+
 ## Compatiablility:
 Currently only includes build for x86_64 both Windows and Linux.
 
