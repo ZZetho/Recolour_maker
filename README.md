@@ -23,9 +23,12 @@ Uses [Raylib](https://github.com/raysan5/raylib) for rendering and [Clay](https:
 - Press the recolour button (![Recolour Button](https://github.com/ZZetho/pics/blob/main/Recolour.png?raw=true)) to generate the default and recolour configs.
 - Two configs will be created, a default and a recolour one, the default config adds texture switches to the part and creates texture sets to replace the parts materials, the recolour config creates texture sets with materials that can be recoloured and adds them to the texture switches added by the default config.
 - Press the copy button (![Copy Button](https://github.com/ZZetho/pics/blob/main/Copy.png?raw=true)) above the default / recolour config to copy that config to your clipboard, which can then be pasted in your .cfg files.
+- Not all properties of the recolour config are automated yet, you have to set the normalisation vectors, mod requirements, the sectionName of texture switches (this is the name that the texture switcher has in game) and texture sets that are copied to make the new ones yourself. Also, if the part uses one of the KSP/Diffuse shaders, then you will also have to supply a specular map to the recolour texture set, the default one included in any of the TURD mods will work fine.
 
 ## Roadmap:
 - Currently creates a texture switch for each relevant material the part uses, it should detect when those materials are part of variants and, as such the texture switches can be combined.
+- Automatic normalisation vector calculation.
+- Mod requirements and texture sets to copy can be selected, allowing fully automated config generation.
 - Allow selecting a maskTex before generating recolour configs, so that vectors can be automatically calculated.
 - Overlays a labeled wireframe of the model onto the parts textures so that it is obvious what materials / meshes correspond to where.
 - Show a 3D model of the selected part, with labeled meshes and overlaid with maskTex (This'll be real hard).
@@ -37,7 +40,7 @@ Then, go into build and use the command:
 `make`
 
 ## Compatiablility:
-Currently only includes builds for x86_64 both Windows and Linux.
+Currently only includes builds for x86_64 both Windows and Linux, but being written in pure C, builds for other platforms will be easy, let me know if you want them.
 
 ## Known bugs:
 Fails to correctly parse inline Modules, fotunatley these are extremly rare.  
