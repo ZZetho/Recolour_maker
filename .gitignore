@@ -5,3 +5,6 @@ build/cmake_install.cmake
 build/CPackConfig.cmake
 build/CPackSourceConfig.cmake
 build/Makefile
+
+src/Linux_64.cmake
+src/Windows_64.cmake
