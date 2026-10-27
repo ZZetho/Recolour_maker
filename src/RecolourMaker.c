@@ -444,6 +444,108 @@ int UniqueId()
 	return id;
 }
 
+//█▀ ▄▀█ █░█ █ █▄░█ █▀▀   ░░▄▀   █░░ █▀█ ▄▀█ █▀▄ █ █▄░█ █▀▀
+//▄█ █▀█ ▀▄▀ █ █░▀█ █▄█   ▄▀░░   █▄▄ █▄█ █▀█ █▄▀ █ █░▀█ █▄█
+
+// write a single int to a file
+void SaveInt(int i, FILE * file)
+{
+    size_t writtenObjects = fwrite(&i, sizeof(int), 1, file);
+    
+    if (writtenObjects == 1)
+    {
+        // int sucessfully written
+    }
+    else if (feof(file) == true)
+    {
+        printf("ERROR: reached end of file\n");
+    }
+    else
+    {
+        printf("ERROR: write error, tried to write 1 int but %llu were written\n", writtenObjects);
+    }
+    
+    printf("wrote int: %d\n", i);
+}
+
+int LoadInt(FILE * file)
+{
+    int readInt = 0;
+    size_t readObjects = fread(&readInt, sizeof(int), 1, file);
+    
+    if (readObjects == 1)
+    {
+        // int sucessfully read
+    }
+    else if (feof(file) == true)
+    {
+        printf("ERROR: reached end of file\n");
+        readInt = 0;
+    }
+    else
+    {
+        printf("ERROR: tried to read 1 int but %llu were read\n", readObjects);
+        readInt = 0;
+    }
+    
+    printf("read int: %d\n", readInt);
+    return readInt;
+}
+
+// !! string length should include the null terminator so that the string is exactly identical when being loaded
+void SaveString(String string, FILE * file)
+{
+    if (string.chars[string.length - 1] != '\0')
+    {
+        printf("String did not end with a null terminator\n");
+    }
+    
+    SaveInt(string.length, file);
+    size_t writtenObjects = fwrite(string.chars, sizeof(char), string.length, file);
+    
+    if (writtenObjects == (size_t)string.length)
+    {
+        // string written sucessfully
+    }
+    else if (feof(file) == true)
+    {
+        printf("ERROR: reached end of file while trying to write %s\n", string.chars);
+    }
+    else
+    {
+        printf("ERROR: tried to write %d chars of %s, but %llu were written\n", string.length, string.chars, writtenObjects);
+    }
+}
+
+void LoadString(String * string, FILE * file)
+{
+    string->length = LoadInt(file);
+    
+    printf("reading %d chars\n", string->length);
+    
+    string->chars = realloc(string->chars, sizeof(char) * string->length);
+    size_t readObjects = fread(string->chars, sizeof(char), string->length, file);
+    
+    if (readObjects == (size_t)string->length)
+    {
+        // string read sucessfully
+    }
+    else if (feof(file) == true)
+    {
+        printf("ERROR: reached end of file\n");
+        string->length = readObjects;
+        string->chars = realloc(string->chars, sizeof(char) * string->length);
+    }
+    else
+    {
+        printf("ERROR: tried to read %d chars, but read %llu instead\n", string->length, readObjects);
+        string->length = readObjects;
+        string->chars = realloc(string->chars, sizeof(char) * string->length);
+    }
+    
+    printf("read string: %s\n", string->chars);
+}
+
 //█▀ ▀█▀ █▀█ █ █▄░█ █▀▀   █▀▀ █░█ █▄░█ █▀▀ ▀█▀ █ █▀█ █▄░█ █▀
 //▄█ ░█░ █▀▄ █ █░▀█ █▄█   █▀░ █▄█ █░▀█ █▄▄ ░█░ █ █▄█ █░▀█ ▄█
 
@@ -4729,7 +4831,13 @@ int main(void)
 	LoadEmbossedTextures();
 	
 	// the currently selected part
-	PartInformation selectedPart = { 0 };
+	PartInformation selectedPart = (PartInformation){ 0 };
+	// the currently selected maskTex
+	//NamedTexture selectedMaskTex = (NamedTexture){ 0 };
+	// the currently selected mod requirements
+	//String selectedModRequirements = (String){ .chars = NULL, .length = 0 };
+	// a list of saved directories, to easily get back to them
+	//StringArray savedDirectories = (StringArray){ .strings = NULL, .length = 0 };
 	
 	// the current recolour
 	RecolourConfig recolour = (RecolourConfig){ .defaultConfig = (String){ .chars = NULL, .length = 0 }, .recolourConfig = (String){ .chars = NULL, .length = 0 } };
