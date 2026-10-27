@@ -151,7 +151,7 @@ static inline Clay_Dimensions Raylib_MeasureText(Clay_StringSlice text, Clay_Tex
 
     for (int i = 0; i < text.length; ++i, lineCharCount++)
     {
-    	printf("char %d: <%c>, ", i, text.chars[i]);
+    	//printf("char %d: <%c>, ", i, text.chars[i]);
         if (text.chars[i] == '\n') {
             maxTextWidth = fmax(maxTextWidth, lineTextWidth);
             maxLineCharCount = CLAY__MAX(maxLineCharCount, lineCharCount);
@@ -179,7 +179,7 @@ static inline Clay_Dimensions Raylib_MeasureText(Clay_StringSlice text, Clay_Tex
         }
     }
 	
-	printf("\n");
+	//printf("\n");
 	
     maxTextWidth = fmax(maxTextWidth, lineTextWidth);
     maxLineCharCount = CLAY__MAX(maxLineCharCount, lineCharCount);
