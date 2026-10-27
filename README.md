@@ -14,7 +14,7 @@ _Features classic windows 98 stylings, for a charmingly retro yet practical aest
 ## To install and run:
 - Make sure Textures Unlimited is installed.
 - Download and unzip the files.
-- Put the Recolour_Maker folder directly inside GameData.
+- Put the Recolour_maker folder directly inside GameData.
 - Go to GameData/000_TexturesUnlimited/GeneralConfiguration.cfg and change exportUVs to true, then launch KSP (you only need to do this once), this will create the ModelData.txt files that are needed for recolouring, KSP does not need to remain running.
 - In the build folder, run either "RecolourMaker.exe" if you are on windows or "RecolourMaker" if you are on linux.
 

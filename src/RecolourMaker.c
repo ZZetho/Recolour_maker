@@ -1,14 +1,11 @@
 // TODO list:
-// allow selecting modRequirements, masktex, ect using the file browser
 // settings and variables that persist across program runs, eg: mod requirements, ordering
+// allow selecting modRequirements, masktex, ect using the file browser
 // bug: ../../GameData/Tantares/parts/core_lk_v2/lk_v2_fuel_tank_s0_1.cfg model data reading does not work
 // properly parse inline modules
 // automatically calculate vectors
 // show which areas on a part use what material using the svg's next to ModelData.txt
 // re add lines between parent and child modules
-// fix memory leaks
-// add selection for recolor mask, mod requirements, ordering
-// write log to a file
 
 // DONE list:
 // draw module tree vertically instead of horizontally
@@ -37,6 +34,8 @@
 // bug: ../../GameData/B9_Aerospace_Legacy/Parts/Aero_Wing_HW21/part.cfg model not found
 // when parsing modules, more checks for being commented out
 // redo recolouring types and program flow, eg: add textureSet type
+// write log to a file
+// fix memory leaks
 
 // using clay for the ui
 #define CLAY_IMPLEMENTATION
@@ -692,7 +691,7 @@ void TrimWhitespace(String * string)
 {
 	GarunteeNullTerminator(string);
 	
-	while (IsWhitespace(string->chars[0]) == true && string->length > 0)
+	while (string->length > 0 && IsWhitespace(string->chars[0]) == true)
 	{
 		// remove the first char
 		string->length -= 1;
@@ -704,7 +703,7 @@ void TrimWhitespace(String * string)
 	//printf("final char: ");
 	//BetterPrint((String){ .length = 1, .chars = &string->chars[string->length - 1 - nullTerminator] });
 	
-	while(IsWhitespace(string->chars[string->length - 1 - nullTerminator]) == true && string->length > 0)
+	while(string->length > 1 && IsWhitespace(string->chars[string->length - 1 - nullTerminator]) == true)
 	{
 		//remove the last (not \0) char
 		ResizeString(string, string->length - 1);
@@ -2626,18 +2625,22 @@ DirectoryType FindDirectoryType(String directoryName)
 	
 	if (StringsEqual(extension, cfg) == true)
 	{
+		free(extension.chars);
 		return CONFIG;
 	}
 	else if (StringsEqual(extension, mu) == true)
 	{
+		free(extension.chars);
 		return MODEL;
 	}
 	else if (StringsEqual(extension, png) == true || StringsEqual(extension, dds) == true)
 	{
+		free(extension.chars);
 		return TEXTURE;
 	}
 	else if (StringsEqual(extension, txt) == true || StringsEqual(extension, md) == true)
 	{
+		free(extension.chars);
 		return TEXT;
 	}
 	
